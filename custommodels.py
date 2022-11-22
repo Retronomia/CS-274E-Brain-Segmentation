@@ -23,17 +23,6 @@ class Reshape(nn.Module):
     def forward(self, x):
         return x.view(-1,self.channels,int(np.sqrt(self.lth//self.channels)),int(np.sqrt(self.lth//self.channels)))
 
-        
-from functools import reduce
-from operator import __add__
-class Conv2dSamePadding(nn.Conv2d):
-    def __init__(self,*args,**kwargs):
-        super(Conv2dSamePadding, self).__init__(*args, **kwargs)
-        self.zero_pad_2d = nn.ZeroPad2d(reduce(__add__,
-            [(k // 2 + (k - 2 * (k // 2)) - 1, k // 2) for k in self.kernel_size[::-1]]))
-
-    def forward(self, input):
-        return  self._conv_forward(self.zero_pad_2d(input), self.weight, self.bias)
 
 
 class Encoder(nn.Module):
@@ -52,14 +41,14 @@ class Encoder(nn.Module):
         encoderlist = []
         curr_input_size = self.input_size
         curr_input_shape = self.input_shape
-
-
+        self.dimshapes = []
         for i in range(self.num_layers):
+            self.dimshapes.append(curr_input_shape)
             tempshape = int(np.floor(((curr_input_shape+2*self.padding-self.dilation*(self.kernel_size-1)-1)/(self.stride))+1))
             if tempshape < 1:
                 raise ValueError(f"Warning: VAE encoder portion only can go up to {i} layers. Cutting off early.")
                 print(f"Warning: VAE encoder portion only can go up to {i} layers. Cutting off early.")
-                break
+                break 
             output_size = int(min(self.input_shape, 16 * (2 ** i)))
             #print(f"Layer {i+1} (channels {curr_input_size} shape {curr_input_shape}) -> {output_size}, {tempshape}")
             encoderlist.append(
@@ -82,7 +71,7 @@ class Encoder(nn.Module):
         self.final_shape = curr_input_shape
 
     def get_dim(self):
-        return self.final_dim,self.final_shape
+        return self.final_dim,self.final_shape,self.dimshapes
 
     def forward(self,input):
         return self.encoder(input)
@@ -128,7 +117,7 @@ class Bottleneck(nn.Module):
         return self.bottleneck(input)
 
 class Decoder(nn.Module):
-    def __init__(self,input_size,input_shape,num_layers,kernel_size,stride,padding,dilation):
+    def __init__(self,input_size,input_shape,dimshapes,num_layers,kernel_size,stride,padding,dilation):
         super(Decoder,self).__init__()
 
         self.input_size = input_size
@@ -136,8 +125,6 @@ class Decoder(nn.Module):
         self.stride = stride
         self.padding = padding
         self.dilation = dilation
-
-        self.output_padding = 0
 
         self.outputWidth = 64
         self.outputChannels = 1
@@ -148,8 +135,15 @@ class Decoder(nn.Module):
 
         curr_input_size = self.input_size
         curr_input_shape = input_shape
+
+        dimshapes.reverse()
         for i in range(self.num_layers):
-            tempshape = int(np.floor((curr_input_shape-1)*self.stride-2*self.padding+self.dilation*(self.kernel_size-1)+self.output_padding+1))
+            output_padding=0
+            tempshape = int(np.floor((curr_input_shape-1)*self.stride-2*self.padding+self.dilation*(self.kernel_size-1)+output_padding+1))
+            if tempshape < dimshapes[i]:
+                output_padding= dimshapes[i]-tempshape
+                #print("padding now",output_padding)
+                tempshape = int(np.floor((curr_input_shape-1)*self.stride-2*self.padding+self.dilation*(self.kernel_size-1)+output_padding+1))
             if tempshape < 1:
                 raise ValueError(f"Warning: VAE decoder portion only can go up to {i} layers. Cutting off early.")
                 print(f"Warning: VAE decoder portion only can go up to {i} layers. Cutting off early.")
@@ -157,7 +151,7 @@ class Decoder(nn.Module):
             output_size = int(max(16, self.outputWidth / (2 ** i)))
             #print(f"Layer {i+1} (channels {curr_input_size} shape {curr_input_shape}) -> {output_size}, {tempshape}")
             decoderlist.append(
-                nn.ConvTranspose2d(curr_input_size,output_size,self.kernel_size,self.stride)
+                nn.ConvTranspose2d(curr_input_size,output_size,self.kernel_size,self.stride,self.padding,output_padding=output_padding,dilation=self.dilation)
             )
             decoderlist.append(PrintLayer())
             decoderlist.append(
@@ -186,9 +180,9 @@ class AutoEnc(nn.Module):
         super(AutoEnc,self).__init__()
         
         self.encoder = Encoder(num_layers,kernel_size,stride,padding,dilation)
-        dim,shape = self.encoder.get_dim()
+        dim,shape,dimshapes = self.encoder.get_dim()
         self.bottleneck = Bottleneck(dim,shape)
-        self.decoder = Decoder(dim,shape,num_layers,kernel_size,stride,padding,dilation)
+        self.decoder = Decoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation)
 
     def forward(self,input):
         x = self.encoder(input)
