@@ -2,3 +2,6 @@ neurips_2020.sty
 
 *.png
 *.csv
+*.pkl
+*.pth
+*.npy

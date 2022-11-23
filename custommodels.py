@@ -52,7 +52,11 @@ class Encoder(nn.Module):
             output_size = int(min(self.input_shape, 16 * (2 ** i)))
             #print(f"Layer {i+1} (channels {curr_input_size} shape {curr_input_shape}) -> {output_size}, {tempshape}")
             encoderlist.append(
-                nn.Conv2d(curr_input_size,output_size,self.kernel_size,self.stride)
+                nn.Conv2d(curr_input_size,output_size,
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                padding=self.padding,
+                dilation=self.dilation)
             )
             encoderlist.append(PrintLayer())
             encoderlist.append(
@@ -95,6 +99,7 @@ class Bottleneck(nn.Module):
         bottlenecklist.append(PrintLayer())
         bottlenecklist.append(nn.Flatten())
         bottlenecklist.append(PrintLayer())
+        #print(input_size,input_shape,"input",bottle_chan*input_shape**2,"output",linear_size)
         bottlenecklist.append(
             nn.Linear(bottle_chan*input_shape**2,linear_size)
         )
@@ -151,7 +156,12 @@ class Decoder(nn.Module):
             output_size = int(max(16, self.outputWidth / (2 ** i)))
             #print(f"Layer {i+1} (channels {curr_input_size} shape {curr_input_shape}) -> {output_size}, {tempshape}")
             decoderlist.append(
-                nn.ConvTranspose2d(curr_input_size,output_size,self.kernel_size,self.stride,self.padding,output_padding=output_padding,dilation=self.dilation)
+                nn.ConvTranspose2d(curr_input_size,output_size,
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                output_padding=output_padding,
+                dilation=self.dilation)
             )
             decoderlist.append(PrintLayer())
             decoderlist.append(

@@ -140,7 +140,7 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list):
         add_test.append((tempimg,tempmask))
     for i in test_indices[int(len(test_indices)*percent_sprite):]: #no sprite
         rawimg = np.array(PIL.Image.open(image_files[class_name][i]))
-        tempimg = rescale_array(tempimg,0,1)
+        rawimg = rescale_array(rawimg,0,1)
         rawimg = np.expand_dims(rawimg, axis=0)
         makenorm = rawimg * 0
         add_test.append((rawimg,makenorm))
