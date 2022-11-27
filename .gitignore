@@ -5,3 +5,5 @@ neurips_2020.sty
 *.pkl
 *.pth
 *.npy
+*.json
+*.gz

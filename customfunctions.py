@@ -9,6 +9,19 @@ import torch
 import matplotlib.pyplot as plt
 import h5py
 from monai.transforms.utils import rescale_array
+import json
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+import math
+
+class MedNISTDataset(torch.utils.data.Dataset):
+    def __init__(self, image_files):
+        self.image_files = image_files
+
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, index):
+        return self.image_files[index][0],self.image_files[index][1]
 
 
 def resetSeeds():
@@ -48,7 +61,6 @@ def loadMedNISTData(root_dir):
 
     class_names = sorted(x for x in os.listdir(data_dir)
                         if os.path.isdir(os.path.join(data_dir, x)))
-    num_class = len(class_names)
 
     image_files = dict()
     num_each = dict()
@@ -80,16 +92,9 @@ def loadMedNISTData(root_dir):
 
     return image_files
 
-def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list):
+def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chances: tuple):
     resetSeeds()
-    '''
-    Function to allow data to be pulled from multiple classes with specific proportions.
-    Input:
-    split_dict: dict- dictionary of proportions of data to be pulled, with keys of (train,val,test) where each value is 0<=p<=1 and sums to 1 max
-    Output:
-    returns train_x,val_x,test_x, which are lists of whatever data was passed into image_files with elements of format (data,int) where int is
-    either 0 (do not add sprite) or 1 (do add sprite)
-    '''
+    train_sp,val_sp,test_sp = sprite_chances
     class_name = 'HeadCT'
 
     train_frac,val_frac,test_frac = split_tuple
@@ -104,47 +109,218 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list):
     val_indices = split_indices[int(dat_len*train_frac):int(dat_len*train_frac)+int(dat_len*val_frac)]
     test_indices = split_indices[int(dat_len*train_frac)+int(dat_len*val_frac):int(dat_len*train_frac)+int(dat_len*val_frac)+int(dat_len*test_frac)]
 
-    add_train = []
-    add_val = []
-    add_test = []
-    for i in train_indices:
-        rawimg = np.array(PIL.Image.open(image_files[class_name][i]))
-        rawimg = rescale_array(rawimg,0,1)
-        rawimg = np.expand_dims(rawimg, axis=0)
-        makenorm = rawimg * 0
-        add_train.append((rawimg,makenorm))
+    def genArray(type_indices,p_sprite,image_files,class_name,mask_imgs):
+        made_arr = []
+        for i in type_indices[0:int(len(type_indices)*p_sprite)]: #add sprite
+            tempmask = mask_imgs[i]*1
+            tempmask = np.expand_dims(tempmask,axis=0)
+            tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
+            tempimg = rescale_array(tempimg,0,1)
+            tempimg = np.expand_dims(tempimg,axis=0)
+            tempimg[tempmask.astype(bool)] = 1   #random.uniform(0,1)
+            made_arr.append((tempimg,tempmask))
+        for i in type_indices[int(len(type_indices)*p_sprite):]: #no sprite
+            tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
+            tempimg = rescale_array(tempimg,0,1)
+            tempimg = np.expand_dims(tempimg, axis=0)
+            makenorm = tempimg * 0
+            made_arr.append((tempimg,makenorm))
+        return np.array(made_arr)
 
-    percent_sprite = .3 #30% chance to have a sprite
-    for i in val_indices[0:int(len(val_indices)*percent_sprite)]: #add sprite
-        tempmask = mask_imgs[i]*1
-        tempmask = np.expand_dims(tempmask, axis=0)
-        tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
-        tempimg = rescale_array(tempimg,0,1)
-        tempimg = np.expand_dims(tempimg, axis=0)
-        tempimg[tempmask.astype(bool)]= 1   #random.uniform(0,1)
-        add_val.append((tempimg,tempmask))
-    for i in val_indices[int(len(val_indices)*percent_sprite):]: #no sprite
-        rawimg = np.array(PIL.Image.open(image_files[class_name][i]))
-        rawimg = rescale_array(rawimg,0,1)
-        rawimg = np.expand_dims(rawimg, axis=0)
-        makenorm = rawimg * 0
-        add_val.append((rawimg,makenorm))
-
-    for i in test_indices[0:int(len(test_indices)*percent_sprite)]: #add sprite
-        tempmask = mask_imgs[i]*1
-        tempmask = np.expand_dims(tempmask, axis=0)
-        tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
-        tempimg = rescale_array(tempimg,0,1)
-        tempimg = np.expand_dims(tempimg, axis=0)
-        tempimg[tempmask.astype(bool)]= 1   #random.uniform(0,1)
-        add_test.append((tempimg,tempmask))
-    for i in test_indices[int(len(test_indices)*percent_sprite):]: #no sprite
-        rawimg = np.array(PIL.Image.open(image_files[class_name][i]))
-        rawimg = rescale_array(rawimg,0,1)
-        rawimg = np.expand_dims(rawimg, axis=0)
-        makenorm = rawimg * 0
-        add_test.append((rawimg,makenorm))
+    add_train = genArray(train_indices,train_sp,image_files,class_name,mask_imgs)
+    add_val = genArray(val_indices,val_sp,image_files,class_name,mask_imgs)
+    add_test = genArray(test_indices,test_sp,image_files,class_name,mask_imgs)
 
     print(f"For {class_name} added {len(add_train)} train, {len(add_val)} val, {len(add_test)} test.")
-    print(f"Val has {int(len(val_indices)*percent_sprite)}/{len(val_indices)} sprited images, Test has {int(len(test_indices)*percent_sprite)}/{len(test_indices)} sprited images, ")
-    return np.array(add_train),np.array(add_val),np.array(add_test)
+    print(f"Train has {int(len(train_indices)*train_sp)}/{len(train_indices)} sprited images, Val has {int(len(val_indices)*val_sp)}/{len(val_indices)} sprited images, Test has {int(len(test_indices)*test_sp)}/{len(test_indices)} sprited images, ")
+    
+    return add_train,add_val,add_test
+
+def json_reformatter(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError(f'{type(obj)} is not serializable')
+
+def score(model,loader,loss_function,chosen_loss,device):
+    model.eval()
+    with torch.no_grad():
+        y_pred = torch.tensor([], dtype=torch.float32, device=device)
+        y_mask = torch.tensor([], dtype=torch.long, device=device)
+        y_true = torch.tensor([], dtype=torch.long, device=device)
+        mu = torch.tensor([], dtype=torch.long, device=device)
+        sigma = torch.tensor([], dtype=torch.long, device=device)
+        loss_values = []
+        for data, ground_truths in loader:
+            val_images = data.to(device)
+            truths = ground_truths.to(device)
+            if chosen_loss=="KL":
+                temp_pred,temp_mu,temp_sigma = model(val_images)
+                mu = torch.cat([mu, temp_mu], dim=0)
+                sigma = torch.cat([sigma,temp_sigma], dim=0)
+            else:
+                temp_pred = model(val_images)
+            y_pred = torch.cat([y_pred, temp_pred], dim=0)
+            y_true = torch.cat([y_true, val_images], dim=0)
+            y_mask = torch.cat([y_mask, truths], dim=0)
+            
+            if chosen_loss == "custom" or chosen_loss == "custom2":
+                loss = loss_function(temp_pred,val_images,truths)
+            elif chosen_loss == "KL":
+                loss = loss_function(temp_pred,val_images,temp_mu,temp_sigma)
+            else:
+                loss = loss_function(temp_pred,val_images)
+            loss_values.append(loss.item())
+        return loss_values, y_pred,y_mask,y_true
+
+def metrics(y_stat,y_mask,type,fol,filename):
+    folder = "images"
+
+    folder = os.path.join(folder,fol)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    diceScore,diceThreshold = compute_dice_curve_recursive(
+        y_stat,y_mask,
+        plottitle=f"DICE vs L1 Threshold Curve for {type} Samples",
+        filename=os.path.join(folder, f'dicePC_{filename}.png'),
+        granularity=5
+    )
+
+    #print("Computing AUROC:")
+    diff_auc, _fpr, _tpr, _threshs = compute_roc(y_stat.flatten(),y_mask.astype(bool).astype(int).flatten(),
+            plottitle=f"ROC Curve for {type} Samples",
+            filename=os.path.join(folder, f'rocPC_{filename}.png'))
+    #print("Computing AUPRC:")
+    diff_auprc, _precisions, _recalls, _threshs = compute_prc(
+        y_stat.flatten(),
+        y_mask.astype(bool).astype(int).flatten(),
+        plottitle=f"Precision-Recall Curve for {type} Samples",
+        filename=os.path.join(folder, f'prcPC_{filename}.png')
+    )
+    return diff_auc,diff_auprc,diceScore,diceThreshold
+
+#below here is modified from the brainweb github code
+#I wanted to have the same dice algorithm
+
+def compute_dice_curve_recursive(predictions, labels, filename=None, plottitle="DICE Curve", granularity=5):
+    datadict = dict()
+    datadict["scores"], datadict["threshs"] = compute_dice_score(predictions, labels, granularity)
+
+    datadict["best_score"], datadict["best_threshold"] = sorted(zip(datadict["scores"], datadict["threshs"]), reverse=True)[0]
+
+    min_threshs, max_threshs = min(datadict["threshs"]), max(datadict["threshs"])
+    buffer_range = math.fabs(min_threshs - max_threshs) * 0.02
+    x_min, x_max = min(datadict["threshs"]) - buffer_range, max(datadict["threshs"]) + buffer_range
+    fig = plt.figure()
+    plt.plot(datadict["threshs"],datadict["scores"], color='darkorange', lw=2, label='DICE vs Threshold Curve')
+    plt.xlim([x_min, x_max])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Thresholds')
+    plt.ylabel('DICE Score')
+    plt.title(plottitle)
+    plt.legend(loc="lower right")
+    plt.text(x_max - x_max * 0.01, 1, f'Best dice score at {datadict["best_threshold"]:.5f} with {datadict["best_score"]:.4f}', horizontalalignment='right',
+                           verticalalignment='top')
+    #plt.show()
+
+    # save a pdf to disk
+    if filename:
+        fig.savefig(filename)
+        with open(filename+".json", "w") as fp:
+            json.dump(datadict,fp, indent = 4,default=json_reformatter) 
+
+    plt.close(fig)
+    
+    return datadict["best_score"], datadict["best_threshold"]
+
+def dice(P, G):
+    psum = np.sum(P.flatten())
+    gsum = np.sum(G.flatten())
+    pgsum = np.sum(np.multiply(P.flatten(), G.flatten()))
+    score = (2 * pgsum) / (psum + gsum)
+    #print(f"pgsum {pgsum}, psum {psum}, gsum {gsum}")
+    return score
+
+def xfrange(start, stop, step):
+    i = 0
+    while start + i * step < stop:
+        yield start + i * step
+        i += 1
+
+def compute_dice_score(predictions, labels, granularity):
+    def inner_compute_dice_curve_recursive(start, stop, decimal):
+        _threshs = []
+        _scores = []
+        had_recursion = False
+
+        if decimal == granularity:
+            return _threshs, _scores
+
+        for i, t in enumerate(xfrange(start, stop, (1.0 / (10.0 ** decimal)))):
+            #print(f"Trying {i},{t}")
+            score = dice(np.where(predictions > t, 1, 0), labels)
+            if i >= 2 and score <= _scores[i - 1] and not had_recursion:
+                _subthreshs, _subscores = inner_compute_dice_curve_recursive(_threshs[i - 2], t, decimal + 1)
+                _threshs.extend(_subthreshs)
+                _scores.extend(_subscores)
+                had_recursion = True
+            _scores.append(score)
+            _threshs.append(t)
+
+        return _threshs, _scores
+
+    threshs, scores = inner_compute_dice_curve_recursive(0, 1.0, 1)
+    sorted_pairs = sorted(zip(threshs, scores))
+    threshs, scores = list(zip(*sorted_pairs))
+    return scores, threshs
+
+def compute_prc(predictions, labels, filename=None, plottitle="Precision-Recall Curve"):
+    datadict = dict()
+    datadict["precisions"], datadict["recalls"], datadict["thresholds"] = precision_recall_curve(labels, predictions)
+    datadict["auprc"] = average_precision_score(labels, predictions)
+
+    fig = plt.figure()
+    plt.step(datadict["recalls"], datadict["precisions"], color='b', alpha=0.2, where='post')
+    plt.fill_between(datadict["recalls"],datadict["precisions"], step='post', alpha=0.2, color='b')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1.0])
+    plt.title(f'{plottitle} (area = {datadict["auprc"]:.2f}.)')
+    #plt.show()
+
+    # save a pdf to disk
+    if filename:
+        fig.savefig(filename)
+        with open(filename+".json", "w") as fp:
+            json.dump(datadict,fp, indent = 4,default=json_reformatter) 
+
+    plt.close(fig)
+
+    return datadict["auprc"], datadict["precisions"],datadict["recalls"], datadict["thresholds"]
+
+def compute_roc(predictions, labels, filename=None, plottitle="ROC Curve"):
+    datadict = dict()
+    datadict["_fpr"], datadict["_tpr"], datadict["thresholds"] = roc_curve(labels, predictions)
+    datadict["roc_auc"] = auc(datadict["_fpr"], datadict["_tpr"])
+  
+    fig = plt.figure()
+    plt.plot(datadict["_fpr"], datadict["_tpr"], color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % datadict["roc_auc"])
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(plottitle)
+    plt.legend(loc="lower right")
+    #plt.show()
+
+    # save a pdf to disk
+    if filename:
+        fig.savefig(filename)
+        with open(filename+".json", "w") as fp:
+            json.dump(datadict,fp, indent = 4,default=json_reformatter) 
+                
+    plt.close(fig)
+
+    return datadict["roc_auc"],  datadict["_fpr"],  datadict["_tpr"], datadict["thresholds"]
