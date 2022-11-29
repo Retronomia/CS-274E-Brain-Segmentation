@@ -5,16 +5,20 @@ import random
 from monai.utils import set_determinism
 from monai.apps import download_and_extract
 import numpy as np
+import optuna
 import torch 
+import torch.nn as nn
 import matplotlib.pyplot as plt
 import h5py
 from monai.transforms.utils import rescale_array
 import json
+from monai.data import decollate_batch
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 import math
 import gc
 import sys
 import psutil
+from skimage.transform import resize
 
 
 def memDebugger():
@@ -139,15 +143,26 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
         made_arr = []
         for i in type_indices[0:int(len(type_indices)*p_sprite)]: #add sprite
             tempmask = mask_imgs[i]*1
+            #
+            #tempmask = resize(tempmask,(128,128),anti_aliasing=False)
+            #
             tempmask = np.expand_dims(tempmask,axis=0)
+
+
             tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
             tempimg = rescale_array(tempimg,0,1)
+            #
+            #tempimg = resize(tempimg,(128,128),anti_aliasing=False)
+            #
             tempimg = np.expand_dims(tempimg,axis=0)
             tempimg[tempmask.astype(bool)] = 1   #random.uniform(0,1)
             made_arr.append((tempimg,tempmask))
         for i in type_indices[int(len(type_indices)*p_sprite):]: #no sprite
             tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
             tempimg = rescale_array(tempimg,0,1)
+            #
+            #tempimg = resize(tempimg,(128,128),anti_aliasing=False)
+            #
             tempimg = np.expand_dims(tempimg, axis=0)
             makenorm = tempimg * 0
             made_arr.append((tempimg,makenorm))
@@ -177,15 +192,21 @@ def score(model,loader,loss_function,chosen_loss,device):
         y_true = torch.tensor([], dtype=torch.long, device=device)
         mu = torch.tensor([], dtype=torch.long, device=device)
         sigma = torch.tensor([], dtype=torch.long, device=device)
+        z = torch.tensor([], dtype=torch.long, device=device)
+        z_rec = torch.tensor([], dtype=torch.long, device=device)
         loss_values = []
         for data, ground_truths in loader:
-            temp_mu,temp_sigma = None,None
+            temp_mu,temp_sigma,temp_z,temp_z_rec = None,None,None,None
             val_images = data.to(device)
             truths = ground_truths.to(device)
             if chosen_loss=="KL":
                 temp_pred,temp_mu,temp_sigma = model(val_images)
                 mu = torch.cat([mu, temp_mu], dim=0)
                 sigma = torch.cat([sigma,temp_sigma], dim=0)
+            elif chosen_loss=="cae":
+                temp_pred,temp_z,temp_z_rec = model(val_images)
+                z = torch.cat([z, temp_z], dim=0)
+                z_rec = torch.cat([z_rec,temp_z_rec], dim=0)
             else:
                 temp_pred = model(val_images)
             y_pred = torch.cat([y_pred, temp_pred], dim=0)
@@ -196,12 +217,13 @@ def score(model,loader,loss_function,chosen_loss,device):
                 loss = loss_function(temp_pred,val_images,truths)
             elif chosen_loss == "KL":
                 loss = loss_function(temp_pred,val_images,temp_mu,temp_sigma)
+            elif chosen_loss == "cae":
+                loss = loss_function(temp_pred,val_images,temp_z,temp_z_rec)
             else:
                 loss = loss_function(temp_pred,val_images)
             loss_values.append(loss.item())
-            del val_images,truths,loss,temp_pred,temp_mu,temp_sigma
-
-        del mu,sigma
+            del val_images,truths,loss,temp_pred,temp_mu,temp_sigma,temp_z,temp_z_rec
+        del mu,sigma,z,z_rec
         return loss_values, y_pred,y_mask,y_true
 
 def metrics(y_stat,y_mask,type,fol,filename):
@@ -244,25 +266,29 @@ def train(model,train_loader,optimizer,loss_function,chosen_loss,device):
         step += 1
         inputs = batch_data.to(device)
         truths = ground_truths.to(device)
-        mu,sigma = None,None
+        mu,sigma,z,z_rec = None,None,None,None
 
         optimizer.zero_grad()
         if chosen_loss == "KL":
             outputs,mu,sigma = model(inputs)
+            loss = loss_function(outputs,inputs,mu,sigma)
+        elif chosen_loss == "custom" or chosen_loss == "custom2":
+            outputs = model(inputs)
+            loss = loss_function(outputs,inputs,truths)
+        elif chosen_loss=="cae":
+            outputs,z,z_rec  = model(inputs)
+            loss = loss_function(outputs,inputs,z,z_rec)
         else:
             outputs = model(inputs)
-        if chosen_loss == "custom" or chosen_loss == "custom2":
-            loss = loss_function(outputs,inputs,truths)
-        elif chosen_loss=="KL":
-            loss = loss_function(outputs,inputs,mu,sigma)
-        else:
             loss = loss_function(outputs, inputs)
+        #print(outputs)
         loss.backward()
         optimizer.step()
+    
         epoch_loss += loss.item()
         print(f"{step}/{num_steps}, "f"train_loss: {loss.item():.4f}")
         
-        del inputs,outputs,truths,mu,sigma,loss
+        del inputs,outputs,truths,mu,sigma,loss,z,z_rec
         #if step >= 2:
         #    break
 
@@ -271,8 +297,9 @@ def train(model,train_loader,optimizer,loss_function,chosen_loss,device):
     return epoch_loss
 
 def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,train_loader,val_loader,model_name):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     best_metric=None
-    max_epochs = 10
+    max_epochs = 5
     val_interval = 1
     
     optimizer = torch.optim.Adam(model.parameters(),lr=lr,betas=betas,weight_decay=weight_decay)
@@ -306,23 +333,20 @@ def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,tr
                 return res
         loss_function = maskloss
         score_function = anomaly_score
-    elif chosen_loss=="custom2": 
-        def anomaly_score(pred,real):
-            return torch.abs(pred-real)
-        def maskloss(pred,real,mask,reduction='mean'):
-            def formula(pred,real,mask):
-                anom = anomaly_score(pred,real)
-                #anom_mod = anom.clone()
-                anom[anom==1]=.99
-                anom[anom==0]=1e-4
-                return -(1 - mask)*torch.log(1-anom) - mask*torch.log(anom)
-            res = formula(pred,real,mask)
+    elif chosen_loss=="cae": 
+        def caeloss(pred,real,z,z_rec,reduction='mean'):
+            def formula(pred,real,z,z_rec,reduction='mean'):
+                rho = 1
+                l2 = torch.mean(torch.nn.MSELoss(reduction='none')(pred,real),axis=[1,2,3])
+                rec_z = torch.mean(torch.nn.MSELoss(reduction='none')(z,z_rec),axis=1)
+                return l2+rho*rec_z
+            res = formula(pred,real,z,z_rec)
             if reduction=='mean':
                 return torch.mean(res)
             else:
                 return res
-        loss_function = maskloss
-        score_function = anomaly_score
+        loss_function = caeloss
+        score_function = nn.L1Loss(reduction='none')
     else:
         raise ValueError(f"chosen loss {chosen_loss} invalid")
 
@@ -358,6 +382,28 @@ def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,tr
                     best_metric_epoch = epoch + 1
                 
                 diff_auc,diff_auprc,diceScore,diceThreshold = metrics(y_stat,y_mask,"Validation",customname,str(epoch+1))
+                #
+                y_true_np = np.array([i.numpy() for i in decollate_batch(y_true.cpu(),detach=False)])
+                y_pred_np = np.array([i.numpy() for i in decollate_batch(y_pred.cpu())])
+                if (epoch+1) % 2 == 0:
+                    look_num = 0 #46 #1000 #1 #304
+                    look_num2 = 2
+                    plt.subplots(1,4, figsize=(15, 3))
+                    plt.subplot(1,4,1)
+                    plt.imshow(y_pred_np[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    plt.title("Reconstructed Image")
+                    plt.subplot(1,4,2)
+                    plt.imshow(y_true_np[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    plt.title("Original Image")
+                    plt.subplot(1,4,3)
+                    plt.imshow(y_pred_np[look_num2][0], cmap="gray", vmin=0, vmax=1)
+                    plt.title("Reconstructed Image")
+                    plt.subplot(1,4,4)
+                    plt.imshow(y_true_np[look_num2][0], cmap="gray", vmin=0, vmax=1)
+                    plt.title("Original Image")
+                    plt.show()
+                del y_true_np,y_pred_np
+                #     
                 scheduler.step()
                 print(
                     f"current epoch: {epoch + 1}",
