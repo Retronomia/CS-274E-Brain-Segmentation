@@ -2,6 +2,7 @@ import os
 import PIL
 import tempfile
 import random
+import seaborn as sns
 from monai.utils import set_determinism
 from monai.apps import download_and_extract
 import numpy as np
@@ -199,8 +200,9 @@ def score(model,loader,loss_function,chosen_loss,device):
             temp_mu,temp_sigma,temp_z,temp_z_rec = None,None,None,None
             val_images = data.to(device)
             truths = ground_truths.to(device)
-            if chosen_loss=="KL":
+            if chosen_loss=="KL" or chosen_loss=="KL_supervised":
                 temp_pred,temp_mu,temp_sigma = model(val_images)
+                #temp_pred,temp_mu,temp_sigma = model(val_images)
                 mu = torch.cat([mu, temp_mu], dim=0)
                 sigma = torch.cat([sigma,temp_sigma], dim=0)
             elif chosen_loss=="cae":
@@ -215,8 +217,8 @@ def score(model,loader,loss_function,chosen_loss,device):
             
             if chosen_loss == "custom" or chosen_loss == "custom2":
                 loss = loss_function(temp_pred,val_images,truths)
-            elif chosen_loss == "KL":
-                loss = loss_function(temp_pred,val_images,temp_mu,temp_sigma)
+            elif chosen_loss == "KL" or chosen_loss == "KL_supervised":
+                loss = loss_function(temp_pred,val_images,truths,temp_mu,temp_sigma)
             elif chosen_loss == "cae":
                 loss = loss_function(temp_pred,val_images,temp_z,temp_z_rec)
             else:
@@ -265,6 +267,7 @@ def train(model,train_loader,optimizer,loss_function,chosen_loss,device):
     for batch_data, ground_truths in train_loader:
         step += 1
         inputs = batch_data.to(device)
+
         truths = ground_truths.to(device)
         mu,sigma,z,z_rec = None,None,None,None
 
@@ -272,6 +275,9 @@ def train(model,train_loader,optimizer,loss_function,chosen_loss,device):
         if chosen_loss == "KL":
             outputs,mu,sigma = model(inputs)
             loss = loss_function(outputs,inputs,mu,sigma)
+        elif chosen_loss == "KL_supervised":
+            outputs,mu,sigma = model(inputs)
+            loss = loss_function(outputs,inputs,truths,mu,sigma)
         elif chosen_loss == "custom" or chosen_loss == "custom2":
             outputs = model(inputs)
             loss = loss_function(outputs,inputs,truths)
@@ -306,13 +312,47 @@ def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,tr
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
     
     if chosen_loss=="L1":
-        loss_function = nn.L1Loss()
+        loss_function = nn.L1Loss() #nn.MSELoss() #nn.L1Loss() #nn.BCELoss() #
+        score_function = nn.L1Loss(reduction='none')
+    elif chosen_loss=="L2":
+        loss_function = nn.MSELoss()
+        score_function = nn.L1Loss(reduction='none')
+    elif chosen_loss=="Bernoulli":
+        loss_function = nn.BCELoss()
         score_function = nn.L1Loss(reduction='none')
     elif chosen_loss=="KL":
         def kl_loss(pred,real,mu,sigma):
-            l1_loss = nn.L1Loss(reduction='none')(pred,real)
-            rec = torch.sum(l1_loss, axis=[1, 2, 3])
+            rec = torch.sum(nn.BCELoss(reduction='none')(pred,real),axis=[1, 2, 3])
+            #phi = 10
+            #l1_loss = nn.L1Loss(reduction='none')(pred,real)
+            #rec = phi * torch.sum(l1_loss, axis=[1, 2, 3])
             kl = .5 * torch.sum(torch.square(mu)+torch.square(sigma)-torch.log(torch.square(sigma))-1,axis=1)
+            print("rec",torch.mean(rec).item(),"kl",torch.mean(kl).item())
+            return torch.mean(rec+kl)
+
+        loss_function = kl_loss
+        score_function = nn.L1Loss(reduction='none')
+    elif chosen_loss=="KL_supervised":
+        def anomaly_score(pred,real):
+            return torch.abs(pred-real)
+        def maskloss(pred,real,mask,reduction='mean'):
+            def formula(pred,real,mask):
+                anom = anomaly_score(pred,real)
+                anom_mod = anom.clone()
+                anom_mod[anom_mod==0]=1e-6
+                return (1 - mask)*anom + mask/anom_mod
+            res = formula(pred,real,mask)
+            if reduction=='mean':
+                return torch.mean(res)
+            else:
+                return res
+        def kl_loss(pred,real,mask,mu,sigma):
+            rec = torch.sum(maskloss(pred,real,mask,reduction='none'),axis=[1, 2, 3])
+            #phi = 10
+            #l1_loss = nn.L1Loss(reduction='none')(pred,real)
+            #rec = phi * torch.sum(l1_loss, axis=[1, 2, 3])
+            kl = .5 * torch.sum(torch.square(mu)+torch.square(sigma)-torch.log(torch.square(sigma))-1,axis=1)
+            print("rec",torch.mean(rec).item(),"kl",torch.mean(kl).item())
             return torch.mean(rec+kl)
 
         loss_function = kl_loss
@@ -381,25 +421,43 @@ def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,tr
                     best_metric = avg_reconstruction_err
                     best_metric_epoch = epoch + 1
                 
-                diff_auc,diff_auprc,diceScore,diceThreshold = metrics(y_stat,y_mask,"Validation",customname,str(epoch+1))
+                #diff_auc,diff_auprc,diceScore,diceThreshold = metrics(y_stat,y_mask,"Validation",customname,str(epoch+1))
                 #
                 y_true_np = np.array([i.numpy() for i in decollate_batch(y_true.cpu(),detach=False)])
                 y_pred_np = np.array([i.numpy() for i in decollate_batch(y_pred.cpu())])
-                if (epoch+1) % 2 == 0:
+                if (epoch+1) % 1 == 0:
                     look_num = 0 #46 #1000 #1 #304
                     look_num2 = 2
-                    plt.subplots(1,4, figsize=(15, 3))
-                    plt.subplot(1,4,1)
+                    plt.subplots(2,3, figsize=(5, 3))
+                    plt.subplot(2,3,1)
+                    plt.imshow(y_stat[look_num][0], vmin=0, vmax=1)
+                    #plt.imshow(torch.bernoulli(y_pred).cpu().numpy()[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    plt.grid(False)
+                    plt.title("Score Image")
+                    plt.subplot(2,3,2)
                     plt.imshow(y_pred_np[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    #plt.imshow(torch.bernoulli(y_pred).cpu().numpy()[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    plt.grid(False)
                     plt.title("Reconstructed Image")
-                    plt.subplot(1,4,2)
+                    plt.subplot(2,3,3)
                     plt.imshow(y_true_np[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    #plt.imshow(torch.bernoulli(y_true).cpu().numpy()[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    plt.grid(False)
                     plt.title("Original Image")
-                    plt.subplot(1,4,3)
+                    plt.subplot(2,3,4)
+                    plt.imshow(y_stat[look_num2][0], vmin=0, vmax=1 )
+                    #plt.imshow(torch.bernoulli(y_pred).cpu().numpy()[look_num][0], cmap="gray", vmin=0, vmax=1)
+                    plt.grid(False)
+                    plt.title("Score Image")
+                    plt.subplot(2,3,5)
+                    #plt.imshow(torch.bernoulli(y_pred).cpu().numpy()[look_num2][0], cmap="gray", vmin=0, vmax=1)
                     plt.imshow(y_pred_np[look_num2][0], cmap="gray", vmin=0, vmax=1)
+                    plt.grid(False)
                     plt.title("Reconstructed Image")
-                    plt.subplot(1,4,4)
+                    plt.subplot(2,3,6)
                     plt.imshow(y_true_np[look_num2][0], cmap="gray", vmin=0, vmax=1)
+                    #plt.imshow(torch.bernoulli(y_true).cpu().numpy()[look_num2][0], cmap="gray", vmin=0, vmax=1)
+                    plt.grid(False)
                     plt.title("Original Image")
                     plt.show()
                 del y_true_np,y_pred_np
@@ -408,10 +466,10 @@ def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,tr
                 print(
                     f"current epoch: {epoch + 1}",
                     f"\ncurrent {chosen_loss} loss mean: {avg_reconstruction_err:.4f}",
-                    f"\nAUROC: {diff_auc:.4f}",
-                    f"\nAUPRC: {diff_auprc:.4f}",
-                    f"\nDICE score: {diceScore:.4f}",
-                    f"\nThreshold: {diceThreshold:.4f}",
+                    #f"\nAUROC: {diff_auc:.4f}",
+                    #f"\nAUPRC: {diff_auprc:.4f}",
+                    #f"\nDICE score: {diceScore:.4f}",
+                    #f"\nThreshold: {diceThreshold:.4f}",
                     f"\nbest {chosen_loss} loss mean: {best_metric:.4f} at epoch: {best_metric_epoch}"
                 )
                 trial.report(avg_reconstruction_err, epoch)
