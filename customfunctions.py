@@ -132,7 +132,17 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
     if train_frac + val_frac + test_frac >1:
         raise ValueError(f"Proportions of class {class_name} ({train_frac},{val_frac},{test_frac}) sum to greater than 1.")
     
-    dat_len = len(image_files[class_name])
+    filteredfiles = []
+    for fileimg in image_files[class_name]:
+        tempimg = np.array(PIL.Image.open(fileimg))
+        tempimg = rescale_array(tempimg,0,1)
+        if np.sum(tempimg)/(64*64) >= 5/(64*64):
+            filteredfiles.append(fileimg)
+        #else:
+        #    print("ERROR!",np.sum(tempimg)/(64*64))
+
+
+    dat_len = len(filteredfiles)
     split_indices = np.arange(dat_len)
     np.random.shuffle(split_indices)
 
@@ -140,7 +150,7 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
     val_indices = split_indices[int(dat_len*train_frac):int(dat_len*train_frac)+int(dat_len*val_frac)]
     test_indices = split_indices[int(dat_len*train_frac)+int(dat_len*val_frac):int(dat_len*train_frac)+int(dat_len*val_frac)+int(dat_len*test_frac)]
 
-    def genArray(type_indices,p_sprite,image_files,class_name,mask_imgs):
+    def genArray(type_indices,p_sprite,filteredfiles,mask_imgs):
         made_arr = []
         for i in type_indices[0:int(len(type_indices)*p_sprite)]: #add sprite
             tempmask = mask_imgs[i]*1
@@ -148,10 +158,15 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
             #tempmask = resize(tempmask,(128,128),anti_aliasing=False)
             #
             tempmask = np.expand_dims(tempmask,axis=0)
+            tempimg = np.array(PIL.Image.open(filteredfiles[i]))
 
-
-            tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
             tempimg = rescale_array(tempimg,0,1)
+
+            if np.sum(tempimg)/(64*64) <= 10/(64*64):
+                print("ERROR!",np.sum(tempimg)/(64*64))
+                plt.imshow(tempimg, cmap="gray", vmin=0, vmax=1)
+                plt.show()
+
             #
             #tempimg = resize(tempimg,(128,128),anti_aliasing=False)
             #
@@ -159,8 +174,12 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
             tempimg[tempmask.astype(bool)] = 1   #random.uniform(0,1)
             made_arr.append((tempimg,tempmask))
         for i in type_indices[int(len(type_indices)*p_sprite):]: #no sprite
-            tempimg = np.array(PIL.Image.open(image_files[class_name][i]))
+            tempimg = np.array(PIL.Image.open(filteredfiles[i]))
             tempimg = rescale_array(tempimg,0,1)
+            if np.sum(tempimg)/(64*64) <= 10/(64*64):
+                print("ERROR!",np.sum(tempimg)/(64*64))
+                plt.imshow(tempimg, cmap="gray", vmin=0, vmax=1)
+                plt.show()
             #
             #tempimg = resize(tempimg,(128,128),anti_aliasing=False)
             #
@@ -171,9 +190,9 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
         made_arr = np.array(made_arr)
         return made_arr
 
-    add_train = genArray(train_indices,train_sp,image_files,class_name,mask_imgs)
-    add_val = genArray(val_indices,val_sp,image_files,class_name,mask_imgs)
-    add_test = genArray(test_indices,test_sp,image_files,class_name,mask_imgs)
+    add_train = genArray(train_indices,train_sp,filteredfiles,mask_imgs)
+    add_val = genArray(val_indices,val_sp,filteredfiles,mask_imgs)
+    add_test = genArray(test_indices,test_sp,filteredfiles,mask_imgs)
 
     print(f"For {class_name} added {len(add_train)} train, {len(add_val)} val, {len(add_test)} test.")
     print(f"Train has {int(len(train_indices)*train_sp)}/{len(train_indices)} sprited images, Val has {int(len(val_indices)*val_sp)}/{len(val_indices)} sprited images, Test has {int(len(test_indices)*test_sp)}/{len(test_indices)} sprited images, ")
@@ -217,7 +236,9 @@ def score(model,loader,loss_function,chosen_loss,device):
             
             if chosen_loss == "custom" or chosen_loss == "custom2":
                 loss = loss_function(temp_pred,val_images,truths)
-            elif chosen_loss == "KL" or chosen_loss == "KL_supervised":
+            elif chosen_loss == "KL":
+                loss = loss_function(temp_pred,val_images,temp_mu,temp_sigma)
+            elif chosen_loss == "KL_supervised":
                 loss = loss_function(temp_pred,val_images,truths,temp_mu,temp_sigma)
             elif chosen_loss == "cae":
                 loss = loss_function(temp_pred,val_images,temp_z,temp_z_rec)
