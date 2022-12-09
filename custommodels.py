@@ -158,7 +158,7 @@ class Decoder(nn.Module):
         super(Decoder,self).__init__()
 
         self.input_size = input_size
-        self.kernel_size = kernel_size
+        self.kernel_size = kernel_size.copy()
         self.kernel_size.reverse()
         self.stride = stride.copy()
         self.stride.reverse()
@@ -226,7 +226,7 @@ class Decoder(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    def __init__(self,input_size,input_shape):
+    def __init__(self,input_size,input_shape,latent=128):
         super(Bottleneck,self).__init__()
 
         bottlenecklist = []
@@ -238,7 +238,7 @@ class Bottleneck(nn.Module):
         orig_chan = input_size
         bottle_chan = input_size//8
         
-        linear_size = 128
+        linear_size = latent
   
         bottlenecklist.append(nn.Conv2d(orig_chan,bottle_chan,self.kernel_size,self.stride,padding=self.padding))
         bottlenecklist.append(PrintLayer())
@@ -267,12 +267,12 @@ class Bottleneck(nn.Module):
 
 
 class AutoEnc(nn.Module):
-    def __init__(self,num_layers,kernel_size,stride,padding,dilation):
+    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128):
         super(AutoEnc,self).__init__()
         
         self.encoder = Encoder(num_layers,kernel_size,stride,padding,dilation)
         dim,shape,dimshapes = self.encoder.get_dim()
-        self.bottleneck = Bottleneck(dim,shape)
+        self.bottleneck = Bottleneck(dim,shape,latent)
         self.decoder = Decoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation)
 
     def forward(self,input):
@@ -773,6 +773,20 @@ class SkipDecoder(nn.Module):
         input = self.outactivate(input)
         return input
 
+
+class SkipVAE(nn.Module):
+    def __init__(self,num_layers,kernel_size,stride,padding,dilation):
+        super(SkipVAE,self).__init__()
+        
+        self.encoder = SkipEncoder(num_layers,kernel_size,stride,padding,dilation)
+        dim,shape,dimshapes = self.encoder.get_dim()
+        self.bottleneck = VAE_Bottleneck(dim,shape)
+        self.decoder = SkipDecoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation)
+    def forward(self,input):
+        x,skip = self.encoder(input)
+        x,mean,sigma = self.bottleneck(x)
+        return self.decoder(x,skip),mean,sigma
+        
 
 class SkipAE(nn.Module):
     def __init__(self,num_layers,kernel_size,stride,padding,dilation):
