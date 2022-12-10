@@ -1,17 +1,17 @@
 Python Version: 3.7.13
-Required Libraries:
+Required External Libraries:
 -PIL (Pillow 9.3.0)
--tempfile
 -seaborn==0.12.1
 -monai==1.0.1
 -numpy==1.21.6
 -optuna==3.0.3
 -torch==1.13.0
 -matplotlib==3.5.3
--plotly==5.11.0
 -h5py==3.7.0
 -sklearn==0.0.post1 (scikit-image==0.19.3, scikit-learn==1.0.2)
 -torchvision==0.14.0
+(only if you run any optuna plots:)
+-plotly==5.11.0
 -nbformat==5.7.0
 =================================
 Instructions:
