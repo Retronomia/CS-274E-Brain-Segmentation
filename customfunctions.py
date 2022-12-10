@@ -28,28 +28,22 @@ from skimage.transform import resize
 from custommodels import AutoEnc,VAE,ConstrainedAE,babysfirstAE,SkipAE,AutoEnc_NoBottleneck
 
 def memDebugger():
+    '''Prints information about memory, CPU usage, and existing tensor objects'''
     print("CPU Usage (%):", psutil.cpu_percent())
     print(psutil.virtual_memory())
     pid = os.getpid()
     py = psutil.Process(pid)
-    memory = py.memory_info()[0] / (2**30)
+    memory = py.memory_info()[0] / (2**30) #assume base 2
     print("Memory (GB):",memory)
     print("=========================")
     print("Torch objects:")
-    #objs = gc.get_objects()
     for obj in gc.get_objects():
-        #print(type(obj),sys.getsizeof(obj))
         if torch.is_tensor(obj):
             print(type(obj),obj.size(),sys.getsizeof(obj))
-        #elif type(obj) is list:
-        #    print(type(obj),len(obj))
-        #elif type(obj) is dict:
-        #    print(type(obj),len(obj),obj.keys())
-        #else:
-        #    print(type(obj))
 
 
 class MedNISTDataset(torch.utils.data.Dataset):
+    '''Used to load data in DataLoader'''
     def __init__(self, image_files):
         self.image_files = image_files
 
@@ -57,16 +51,19 @@ class MedNISTDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
     def __getitem__(self, index):
+        #input image, image mask
         return self.image_files[index][0],self.image_files[index][1]
 
 
 def resetSeeds():
+    '''Ensure anything running this behaves the exact same, even with multiple notebook cell runs.'''
     set_determinism(seed=0)
     torch.manual_seed(0)
     np.random.seed(0)
     random.seed(0)
 
 def downloadMedNIST(root_dir):
+    '''Downloads MedNIST dataset. Code from MedNIST tutorial.'''
     resource = "https://github.com/Project-MONAI/MONAI-extra-test-data/releases/download/0.8.1/MedNIST.tar.gz"
     md5 = "0bc7306e7427e00ad1c5526a6677552d"
 
@@ -76,6 +73,7 @@ def downloadMedNIST(root_dir):
         download_and_extract(resource, compressed_file, root_dir, md5)
 
 def loadDSprites():
+    '''Load sprite images from dataset.'''
     resetSeeds()
     filename = "dsprites-dataset-master/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.hdf5"
 
@@ -92,6 +90,7 @@ def loadDSprites():
     return mask_imgs
 
 def loadMedNISTData(root_dir):
+    '''Grab dict of image file paths'''
     downloadMedNIST(root_dir)
     data_dir = os.path.join(root_dir, "MedNIST")
 
@@ -129,6 +128,7 @@ def loadMedNISTData(root_dir):
     return image_files
 
 def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chances: tuple,maskmax: bool):
+    '''Split HeadCT data into test,train,validate'''
     resetSeeds()
     train_sp,val_sp,test_sp = sprite_chances
     class_name = 'HeadCT'
@@ -208,11 +208,13 @@ def splitData(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
     return add_train,add_val,add_test
 
 def json_reformatter(obj):
+    '''Used to convert numpy to list when saving json file via dump()'''
     if isinstance(obj, np.ndarray):
         return obj.tolist()
-    raise TypeError(f'{type(obj)} is not serializable')
+    raise TypeError(f'{type(obj)} could not be reformatted.')
 
 def score(model,loader,loss_function,chosen_loss,device):
+    '''get loss, reconstructions, masks, true image values'''
     model.eval()
     with torch.no_grad():
         y_pred = torch.tensor([], dtype=torch.float32, device=device)
@@ -229,7 +231,6 @@ def score(model,loader,loss_function,chosen_loss,device):
             truths = ground_truths.to(device)
             if chosen_loss=="KL" or chosen_loss=="KL_sp":
                 temp_pred,temp_mu,temp_sigma = model(val_images)
-                #temp_pred,temp_mu,temp_sigma = model(val_images)
                 mu = torch.cat([mu, temp_mu], dim=0)
                 sigma = torch.cat([sigma,temp_sigma], dim=0)
             elif chosen_loss=="cae" or chosen_loss == "cae_sp":
@@ -260,12 +261,13 @@ def score(model,loader,loss_function,chosen_loss,device):
         return loss_values, y_pred,y_mask,y_true
 
 def metrics(y_stat,y_mask,type,fol,filename):
+    '''generate DICE, AUPRC, AUROC'''
     folder = "images"
 
     folder = os.path.join(folder,fol)
     if not os.path.exists(folder):
         os.makedirs(folder)
-
+    #DICE
     diceScore,diceThreshold = compute_dice_curve_recursive(
         y_stat,y_mask,
         plottitle=f"DICE vs L1 Threshold Curve for {type} Samples",
@@ -274,12 +276,12 @@ def metrics(y_stat,y_mask,type,fol,filename):
     )
     flat_stat = y_stat.flatten()
     flat_mask = y_mask.astype(bool).astype(int).flatten()
-    #print("Computing AUROC:")
+    #AUROC
     diff_auc = compute_roc(flat_stat,flat_mask,
             plottitle=f"ROC Curve for {type} Samples",
             filename=os.path.join(folder, f'rocPC_{filename}.png'))
 
-    #print("Computing AUPRC:")
+    #AUPRC
     diff_auprc = compute_prc(
         flat_stat,flat_mask,
         plottitle=f"Precision-Recall Curve for {type} Samples",
@@ -291,6 +293,7 @@ def metrics(y_stat,y_mask,type,fol,filename):
 
 
 def train(model,train_loader,optimizer,loss_function,chosen_loss,device):
+    '''Run through one epoch of training dataset on model'''
     model.train()
     epoch_loss = 0
     step = 0
@@ -362,6 +365,7 @@ def train(model,train_loader,optimizer,loss_function,chosen_loss,device):
     return epoch_loss
 
 def selfunctions(chosen_loss):
+    '''Determine what loss, scoring function will be used for the model run'''
     if chosen_loss=="L1":
         loss_function = nn.L1Loss() #nn.MSELoss() #nn.L1Loss() #nn.BCELoss() #
         score_function = nn.L1Loss(reduction='none')
@@ -471,6 +475,7 @@ def selfunctions(chosen_loss):
 
 
 def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,train_loader,val_loader,model_name):
+    '''Runs training on model.'''
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     best_metric=None
     max_epochs = 10
@@ -594,6 +599,8 @@ def objective(trial,model,lr,betas,weight_decay,chosen_loss,gamma,encoderdict,tr
     return best_metric
 
 def loadProperData(experiment_type: str,root_dir,maskmax=True):
+    '''Loads in data based on experiment_type and maskmax'''
+    '''maskmax=True is all masks are placed as intensity 1, maskmax=False means they are placed anywhere between (0,1)'''
     if experiment_type in ["ae_usp_.1","vae_usp_.1","cae_usp_.1","nobottleae_usp_.1","skipae_usp_.1"]:
         if maskmax ==True:
             file_prefix = "uns(.1)_"
@@ -633,8 +640,8 @@ def loadProperData(experiment_type: str,root_dir,maskmax=True):
     return train_x,val_x,test_x
 
 
-
 def getModel(experiment_type):
+    '''Return model based on experiment_type'''
     from custommodels import AutoEnc,VAE,ConstrainedAE,babysfirstAE,SkipAE,AutoEnc_NoBottleneck
     if experiment_type in ["ae_usp_.1","ae_sp_.1"]:
         modeltype = AutoEnc
@@ -651,6 +658,7 @@ def getModel(experiment_type):
     return modeltype
 
 def test(customname,root_dir,maskmax=True):
+    '''test model that uses name customname on data that either masks with intensity 1 (maskmax=True) or between (0,1) (maskmax=False)'''
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     trialnum,midhalf,enchalf = customname.split("-",2)
@@ -692,7 +700,6 @@ def test(customname,root_dir,maskmax=True):
         y_mask = np.array([i.numpy() for i in decollate_batch(y_mask.cpu(), detach=False)])
 
         avg_reconstruction_err = np.mean(loss_values)
-        best_metric = avg_reconstruction_err
         
         diff_auc,diff_auprc,diceScore,diceThreshold = metrics(y_stat,y_mask,"Test",customname,f"test-{str(maskmax)}")
         #
@@ -781,6 +788,7 @@ def test(customname,root_dir,maskmax=True):
 
 
 def storeResults(model,modelfolder,best_metric,best_metric_epoch,customname,datadict,epoch,chosen_loss):
+    '''Store results from objective run'''
     print("Storing Results...")
     mname = f'trainRecErr.png'
     folder = './images'
@@ -826,6 +834,7 @@ def storeResults(model,modelfolder,best_metric,best_metric_epoch,customname,data
 #I wanted to have the same dice algorithm
 
 def compute_dice_curve_recursive(predictions, labels, filename=None, plottitle="DICE Curve", granularity=5):
+    '''Computes DICE and saves data'''
     datadict = dict()
     datadict["scores"], datadict["threshs"] = compute_dice_score(predictions, labels, granularity)
 
@@ -862,15 +871,16 @@ def compute_dice_curve_recursive(predictions, labels, filename=None, plottitle="
     return best_score, best_threshold
 
 def dice(P, G):
+    '''This calculates DICE using set cardinality formula'''
     psum = np.sum(P.flatten())
     gsum = np.sum(G.flatten())
     pgsum = np.sum(np.multiply(P.flatten(), G.flatten()))
     score = (2 * pgsum) / (psum + gsum)
-    #print(f"pgsum {pgsum}, psum {psum}, gsum {gsum}")
     del psum,gsum,pgsum
     return score
 
 def xfrange(start, stop, step):
+    '''Generator for generating float steps evenly'''
     i = 0
     while start + i * step < stop:
         yield start + i * step
@@ -882,13 +892,14 @@ def compute_dice_score(predictions, labels, granularity):
         _scores = []
         had_recursion = False
 
-        if decimal == granularity:
+        if decimal == granularity: #this stops at the granularity, so setting granularity=5 results in up to 4 decimal places.
             return _threshs, _scores
 
         for i, t in enumerate(xfrange(start, stop, (1.0 / (10.0 ** decimal)))):
-            #print(f"Trying {i},{t}")
             score = dice(np.where(predictions > t, 1, 0), labels)
             if i >= 2 and score <= _scores[i - 1] and not had_recursion:
+                #this walks through previous step as well despite checking the 2nd and 3rd element.
+                #Personally that's a little too greedy (this reruns a whole bunch of thresholds) but it works
                 _subthreshs, _subscores = inner_compute_dice_curve_recursive(_threshs[i - 2], t, decimal + 1)
                 _threshs.extend(_subthreshs)
                 _scores.extend(_subscores)
@@ -904,6 +915,7 @@ def compute_dice_score(predictions, labels, granularity):
     return scores, threshs
 
 def compute_prc(predictions, labels, filename=None, plottitle="Precision-Recall Curve"):
+    '''compute AUPRC, save data'''
     datadict = dict()
     datadict["precisions"], datadict["recalls"], datadict["thresholds"] = precision_recall_curve(labels, predictions)
     datadict["auprc"] = average_precision_score(labels, predictions)
@@ -931,6 +943,7 @@ def compute_prc(predictions, labels, filename=None, plottitle="Precision-Recall 
     return auprc
 
 def compute_roc(predictions, labels, filename=None, plottitle="ROC Curve"):
+    '''Compute AUROC, save data'''
     datadict = dict()
     datadict["_fpr"], datadict["_tpr"], datadict["thresholds"] = roc_curve(labels, predictions)
     datadict["roc_auc"] = auc(datadict["_fpr"], datadict["_tpr"])
