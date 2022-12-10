@@ -1,3 +1,8 @@
+#Credit to:
+#https://github.com/Project-MONAI/tutorials/blob/main/2d_classification/mednist_tutorial.ipynb for brain data plus how to load it
+#https://github.com/deepmind/dsprites-dataset sprite dataset
+#https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py for demonstrating how to set up Optuna code
+#https://github.com/StefanDenn3r/Unsupervised_Anomaly_Detection_Brain_MRI for model inspiration/code for metric evaluation (Baur, et al. 2021)
 import os
 import PIL
 import tempfile
