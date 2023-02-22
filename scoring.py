@@ -8,18 +8,18 @@ from utils import *
 import scipy.spatial
 import os
 from scipy.stats import bootstrap
-
+from torchmetrics.functional import dice,average_precision,auroc
 
 
 def metrics(y_stat,y_mask,mtype,folder,epoch):
     '''generate DICE, AUPRC, AUROC'''
     ensure_folder_exists(folder)
-    
-    flat_mask = y_mask.astype(bool).astype(int).flatten()
+
+    flat_mask = torch.flatten(y_mask).int() #y_mask.astype(bool).astype(int).flatten()
     tot_orig_vals = len(flat_mask)
-    sel_vals = np.logical_or(flat_mask ==0, flat_mask==1)
+    sel_vals= torch.logical_or(flat_mask ==0, flat_mask==1) #np.logical_or(flat_mask ==0, flat_mask==1)
     flat_mask = flat_mask[sel_vals]
-    flat_stat = y_stat.flatten()
+    flat_stat = torch.flatten(y_stat) #y_stat.flatten()
     flat_stat = flat_stat[sel_vals]
     
 
@@ -164,7 +164,8 @@ def compute_dice_curve_recursive(predictions,labels,folder=None,file_name=None,g
 
     return best_score, best_threshold
 
-def dice(P, G):
+
+def old_dice(P, G):
     '''This calculates DICE using set cardinality formula'''
 
 
@@ -192,9 +193,15 @@ def compute_dice_score(predictions, labels, granularity):
             return _threshs, _scores
 
         for i, t in enumerate(xfrange(start, stop, (1.0 / (10.0 ** decimal)))):
-            score = dice(np.where(predictions > t, 1, 0), labels)
-            #testdice = 1.0 - scipy.spatial.distance.dice(labels,np.where(predictions > t, 1, 0)) 
-            #print(f"Orig:{score}, New:{testdice}")
+            temp_preds = torch.zeros_like(predictions)
+            mask = predictions > t
+            temp_preds[mask] = 1
+            score = dice(temp_preds.int(),labels,average='none',num_classes=2)[1]
+            #l = labels.cpu().detach().numpy().flatten()
+            #p = predictions.cpu().detach().numpy().flatten()
+            #tdice = old_dice(np.where(p > t, 1, 0), l)
+            #testdice = 1.0 - scipy.spatial.distance.dice(l,np.where(p > t, 1, 0)) 
+            #print(f"Orig:{score}, New:{testdice}, dice:{tdice}")
             if i >= 2 and score <= _scores[i - 1] and not had_recursion:
                 #this walks through previous step as well despite checking the 2nd and 3rd element.
                 #Personally that's a little too greedy (this reruns a whole bunch of thresholds) but it works
@@ -214,9 +221,9 @@ def compute_dice_score(predictions, labels, granularity):
 
 def compute_prc(predictions, labels, folder=None,file_name=None, plottitle="Precision-Recall Curve"):
     '''compute AUPRC, save data'''
-    datadict = dict()
-    datadict["precisions"], datadict["recalls"], _thresholds = precision_recall_curve(labels, predictions)
-    datadict["auprc"] = average_precision_score(labels, predictions)
+    #datadict = dict()
+    #datadict["precisions"], datadict["recalls"], _thresholds = precision_recall_curve(labels, predictions)
+    #datadict["auprc"] = average_precision_score(labels, predictions)
 
     '''fig = plt.figure()
     plt.step(datadict["recalls"], datadict["precisions"], color='b', alpha=0.2, where='post')
@@ -235,15 +242,16 @@ def compute_prc(predictions, labels, folder=None,file_name=None, plottitle="Prec
     else:
         plt.show()'''
 
-    auprc= datadict["auprc"]
-    del datadict,_thresholds
+    #auprc= datadict["auprc"]
+    #del datadict,_thresholds
+    auprc = average_precision(predictions, labels,task='binary')
     return auprc
 
 def compute_roc(predictions, labels, folder=None, file_name=None, plottitle="ROC Curve"):
     '''Compute AUROC, save data'''
-    datadict = dict()
-    datadict["_fpr"], datadict["_tpr"], datadict["thresholds"] =  roc_curve(labels, predictions)
-    datadict["roc_auc"] = auc(datadict["_fpr"], datadict["_tpr"])
+    #datadict = dict()
+    #datadict["_fpr"], datadict["_tpr"], datadict["thresholds"] =  roc_curve(labels, predictions)
+    #datadict["roc_auc"] = auc(datadict["_fpr"], datadict["_tpr"])
   
     '''fig = plt.figure()
     plt.plot(datadict["_fpr"], datadict["_tpr"], color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % datadict["roc_auc"])
@@ -263,8 +271,7 @@ def compute_roc(predictions, labels, folder=None, file_name=None, plottitle="ROC
     else:
         plt.show()'''
 
-    roc_auc = datadict["roc_auc"]
-
-    del datadict
-
+    #roc_auc = datadict["roc_auc"]
+    #del datadict
+    roc_auc = auroc(predictions, labels,task='binary')
     return roc_auc

@@ -60,10 +60,10 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
             truths = ground_truths.to(device)
             temp_pred,loss = predict_vals(model,val_images,truths,loss_function,chosen_loss,device)
 
-            y_stat = score_function(temp_pred,val_images).cpu().numpy()
-            y_mask = np.array([i.numpy() for i in decollate_batch(truths.cpu(), detach=False)])
+            y_stat = score_function(temp_pred,val_images) #.cpu().numpy()
+            #y_mask = np.array([i.numpy() for i in decollate_batch(truths.cpu(), detach=False)])
 
-            diff_auc,diff_auprc,diceScore,diceThreshold = metrics(y_stat,y_mask,mtype,filepath,epoch)
+            diff_auc,diff_auprc,diceScore,diceThreshold = metrics(y_stat,truths,mtype,filepath,epoch)
 
             loss_values = torch.cat([loss_values, torch.tensor([loss],device=device)], dim=0)
             diff_aucs = torch.cat([diff_aucs, torch.tensor([diff_auc],device=device)], dim=0)
@@ -71,50 +71,49 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
             diceScores = torch.cat([diceScores, torch.tensor([diceScore],device=device)], dim=0)
             diceThresholds = torch.cat([diceThresholds, torch.tensor([diceThreshold],device=device)], dim=0)
 
-            '''if not madeexc:
-                np_preds = temp_pred.cpu().detach().numpy()
-                np_truths = truths.cpu().detach().numpy()
+            if not madeexc:
                 def plotims(num):
                     fig = plt.figure(figsize=(20,5))
                     ax1 = fig.add_subplot(1,4,1)
 
-                    threshplot = y_stat[num][0].copy()
+                    threshplot = y_stat[num][0].clone()
                     threshplot[threshplot < diceThreshold] = 0
-                    ax1.imshow(threshplot,vmin=0, vmax=1)
+                    ax1.imshow(threshplot.cpu(),vmin=0, vmax=1)
                     ax1.grid(False)
                     ax1.set_xticks([])
                     ax1.set_yticks([])
                     ax1.set_title(f"Thresholded L1 Image ({diceThreshold})", size=20)
 
                     ax1 = fig.add_subplot(1,4,2)
-                    ax1.imshow(y_stat[num][0],vmin=0, vmax=1)
+                    ax1.imshow(y_stat[num][0].cpu(),vmin=0, vmax=1)
                     ax1.grid(False)
                     ax1.set_xticks([])
                     ax1.set_yticks([])
                     ax1.set_title("L1 Image",size=20)
                     
                     ax2 = fig.add_subplot(1,4,3)
-                    ax2.imshow(np_preds[num][0], cmap="gray", vmin=0, vmax=1)
+                    ax2.imshow(temp_pred[num][0].cpu(), cmap="gray", vmin=0, vmax=1)
                     ax2.grid(False)
                     ax2.set_xticks([])
                     ax2.set_yticks([])
                     ax2.set_title("Reconstructed Image", size=20)
                     
                     ax3 = fig.add_subplot(1,4,4)
-                    ax3.imshow(np_truths[num][0], cmap="gray", vmin=0, vmax=1)
+                    ax3.imshow(truths[num][0].cpu(), cmap="gray", vmin=0, vmax=1)
                     ax3.grid(False)
                     ax3.set_xticks([])
                     ax3.set_yticks([])
                     ax3.set_title("Original Image", size=20)
                     #plt.show()
-                    save_fig(fig,filepath,f'{epoch}_{batchnum}_{num}',suffix='.jpg')
+                    save_fig(fig,filepath,f'{mtype}({epoch})_{batchnum}_{num}',suffix='.jpg')
                     plt.close(fig)
                 for plotnum in [0]: #125,19,26,234,49,670,69,71,78,82,83,89,92,93,132,504
                     try:
                         plotims(plotnum)
-                    except:
+                    except Exception as e:
+                        print("WARNING:",str(e))
                         pass
-                madeexc = True'''
+                madeexc = True
             
 
         statdict = dict()
@@ -203,8 +202,8 @@ def objective(trial,loaderdict,device):
         train_loaders = tuple(DataLoader(t, batch_size=batch_size,shuffle=True) for t in train_ds)
     else:
         train_ds = loader(train_x)
-        train_loader = DataLoader(train_ds, batch_size=batch_size,shuffle=True)  #REMOVE POST
-        val_ds = loader(val_x) #[0:40]
+        train_loader = DataLoader(train_ds[0:100], batch_size=batch_size,shuffle=True)  #REMOVE POST
+        val_ds = loader(val_x[0:100])
         val_loader  = DataLoader(val_ds, batch_size=batch_size)
 
     del train_x,val_x,test_x
@@ -380,7 +379,7 @@ def test(folder_name,parent_dir,device):
     if type(test_x) is tuple:
         test_x = test_x[0]
     test_ds = loader(test_x)
-    test_loader = DataLoader(test_ds[0:40], batch_size=batch_size,shuffle=True) 
+    test_loader = DataLoader(test_ds[0:100], batch_size=batch_size,shuffle=True) 
 
     del train_x,val_x,test_x
 
