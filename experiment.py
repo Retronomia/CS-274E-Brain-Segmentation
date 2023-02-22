@@ -14,7 +14,7 @@ def loadobjective(trial):
     global folder_name,device
     exp_name = "wmh_usp"
     model_name = "AutoEnc"
-    batch_size = 8
+    batch_size = 4
 
 
     # Generate values
@@ -29,11 +29,11 @@ def loadobjective(trial):
     learnerdict['gamma']=.75
     
     encoderdict = dict()
-    encoderdict['num_layers'] = 4
-    encoderdict['kernel_size'] = [3,2,4,2] 
-    encoderdict['stride'] = [1,2,1,1] 
-    encoderdict['padding'] = [1,1,1,2] 
-    encoderdict['dilation'] = [1,1,1,1] 
+    encoderdict['num_layers'] = 5
+    encoderdict['kernel_size'] = [5,5,5,5,5] 
+    encoderdict['stride'] = [1,2,1,1,1] 
+    encoderdict['padding'] = [1,1,1,2,1] 
+    encoderdict['dilation'] = [1,1,1,1,1] 
     encoderdict['latent'] = 128 
     encoderdict['image_shape']=240
 
@@ -50,7 +50,7 @@ def loadobjective(trial):
     loaderdict['optimizerdict'] = optimizerdict
     loaderdict['learnerdict'] = learnerdict
     loaderdict['encoderdict'] = encoderdict
-    max_epochs = 1
+    max_epochs = 2
     loaderdict['max_epochs'] = max_epochs
 
 
@@ -85,5 +85,5 @@ print("  Params: ")
 for key, value in trial.params.items():
     print("    {}: {}".format(key, value))
 
-
-test(folder_name,'experiments',device)
+#folder_name = "0-wmh_usp-AutoEnc-L1_Loss-2023-02-21 08-53-14"
+#test(folder_name,'experiments',device)

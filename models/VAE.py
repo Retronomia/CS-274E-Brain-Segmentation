@@ -56,13 +56,12 @@ class VAE_Bottleneck(nn.Module):
         return convout,mu,sigma
 
 class VAE(nn.Module):
-    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128):
+    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128,image_shape=64,inp_size=1):
         super(VAE,self).__init__()
-        
-        self.encoder = Encoder(num_layers,kernel_size,stride,padding,dilation)
+        self.encoder = Encoder(num_layers,kernel_size,stride,padding,dilation,image_shape,inp_size)
         dim,shape,dimshapes = self.encoder.get_dim()
         self.bottleneck = VAE_Bottleneck(dim,shape,latent)
-        self.decoder = Decoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation)
+        self.decoder = Decoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation,image_shape)
     def forward(self,input):
         x = self.encoder(input)
         x,mean,sigma = self.bottleneck(x)

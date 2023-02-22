@@ -2,16 +2,16 @@ from models.helper_funcs.modelhelper import *
 
 
 class SkipEncoder(nn.Module):
-    def __init__(self,num_layers,kernel_size,stride,padding,dilation):
+    def __init__(self,num_layers,kernel_size,stride,padding,dilation,input_shape=64,input_size=1):
         super(SkipEncoder,self).__init__()
 
-        self.input_size = 1 #number of channels
+        self.input_size = input_size #number of channels
         self.kernel_size = kernel_size
         self.stride = stride
         
         self.padding = padding
         self.dilation = dilation
-        self.input_shape= 64
+        self.input_shape= input_shape
         self.num_layers = num_layers
 
         self.encoderlist = nn.ModuleList()
@@ -61,6 +61,7 @@ class SkipEncoder(nn.Module):
                 batchl =batchlayer(convskip)
                 input=activatelayer(batchl)
             else: #no skip
+                #print("NoskipL:")
                 convl = convlayer(input)
                 #print("E:",convl.shape)
                 batchl = batchlayer(convl)
@@ -69,7 +70,7 @@ class SkipEncoder(nn.Module):
 
 
 class SkipDecoder(nn.Module):
-    def __init__(self,input_size,input_shape,dimshapes,num_layers,kernel_size,stride,padding,dilation):
+    def __init__(self,input_size,input_shape,dimshapes,num_layers,kernel_size,stride,padding,dilation,output_shape=64):
         super(SkipDecoder,self).__init__()
 
         self.input_size = input_size
@@ -82,7 +83,7 @@ class SkipDecoder(nn.Module):
         self.dilation = dilation[:]
         self.dilation.reverse()
 
-        self.outputWidth = 64
+        self.outputWidth = output_shape
         self.outputChannels = 1
         self.num_layers = num_layers
         self.skippos = (self.num_layers)-((((self.num_layers))//2))-1
@@ -148,6 +149,7 @@ class SkipDecoder(nn.Module):
                 input=activatelayer(batchl)
                 #print('activate')
             else: #no skip
+                #print("Noskipl")
                 convl = convlayer(input)
                 #print("D:",convl.shape)
                 batchl = batchlayer(convl)
@@ -156,16 +158,17 @@ class SkipDecoder(nn.Module):
                 #print('active')
         input = self.outconv(input)
         input = self.outactivate(input)
+        #print(input.shape)
         return input
         
 
 class SkipAE(nn.Module):
-    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128):
+    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128,image_shape=64):
         super(SkipAE,self).__init__()
-        self.encoder = SkipEncoder(num_layers,kernel_size,stride,padding,dilation)
+        self.encoder = SkipEncoder(num_layers,kernel_size,stride,padding,dilation,image_shape,inp_size=1)
         dim,shape,dimshapes = self.encoder.get_dim()
         self.bottleneck = Bottleneck(dim,shape,latent)
-        self.decoder = SkipDecoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation)
+        self.decoder = SkipDecoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation,image_shape)
 
     def forward(self,input):
         x,skip = self.encoder(input)

@@ -62,6 +62,8 @@ def json_reformatter(obj):
     '''Used to convert numpy to list when saving json file via dump()'''
     if isinstance(obj, np.ndarray):
         return obj.tolist()
+    elif isinstance(obj,np.float32):
+        return obj.astype(float)
     raise TypeError(f'{type(obj)} could not be reformatted.')
 
 
@@ -103,6 +105,42 @@ def read_json(path,gz=True):
         with open(path, 'rt', encoding='utf-8') as fp:
             data = json.load(fp)
     return data
+
+
+def save_np(data,folder,file_name: str,gz=True):
+    '''saves np to file'''
+
+    if gz:
+        save_path = ensure_suffix(folder / file_name,'.gz')
+    else:
+        save_path = ensure_suffix(folder / file_name,'.npy')
+
+    ensure_folder_exists(folder)
+    if gz:
+        f = gzip.GzipFile(save_path, 'w')
+        np.save(f,data)
+        f.close()
+        #with gzip.open(save_path, 'wt', encoding='utf-8') as fp:
+        #    np.save(fp,data)
+    else:
+        with open(save_path, "wb") as fp:
+            np.save(fp,data)
+
+def read_np(path,gz=True):
+    if gz:
+        path = ensure_suffix(path,'.gz')
+        f = gzip.GzipFile(path, 'r')
+        data = np.load(f)
+        f.close()
+        #with gzip.open(path, 'rt', encoding='utf-8') as fp:
+        #    data = np.load(fp)
+    else:
+        path = ensure_suffix(path,'.npy')
+        with open(path, 'rb', encoding='utf-8') as fp:
+            data = np.load(fp)
+    return data
+
+
 
 def save_fig(fig,folder,file_name,suffix='.jpg'):
     '''saves pyplot fig image'''

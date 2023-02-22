@@ -102,10 +102,11 @@ class Decoder(nn.Module):
         curr_input_size = self.input_size
         curr_input_shape = input_shape
 
+        dimshapes= dimshapes.copy()
         dimshapes.reverse()
         decoderlist.append(nn.BatchNorm2d(input_size))
         decoderlist.append(nn.ReLU())
-        for i in range(self.num_layers-1):
+        for i in range(self.num_layers):
             output_padding=0
             tempshape = int(np.floor((curr_input_shape-1)*self.stride[i]-2*self.padding[i]+self.dilation[i]*(self.kernel_size[i]-1)+output_padding+1))
             if tempshape < dimshapes[i]:
@@ -170,6 +171,7 @@ class Bottleneck(nn.Module):
         bottlenecklist.append(nn.Flatten())
         bottlenecklist.append(PrintLayer())
         #print(input_size,input_shape,"input",bottle_chan*input_shape**2,"output",linear_size)
+        #print(orig_chan,bottle_chan,linear_size,input_shape)
         bottlenecklist.append(
             nn.Linear(bottle_chan*input_shape**2,linear_size)
         )

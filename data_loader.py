@@ -9,7 +9,7 @@ import nibabel as nib
 from PIL import Image as im
 import seaborn as sns
 from scipy.ndimage import rotate, affine_transform
-
+from tqdm import tqdm
 
 def downloadMedNIST(root_dir):
     '''Downloads MedNIST dataset. Code from MedNIST tutorial.'''
@@ -157,7 +157,8 @@ def loadMNIST(split_tuple: tuple,image_files: dict,mask_imgs: list,sprite_chance
     return add_train,add_val,add_test
 
 
-def loadWMH(split_tuple: tuple,init_path: str,supervised: True):
+
+def loadWMH(split_tuple: tuple,init_path: str,folder: Path,supervised: bool):
     resetSeeds()
     
     def getPatients(init_path):
@@ -180,187 +181,109 @@ def loadWMH(split_tuple: tuple,init_path: str,supervised: True):
     flair_name = "orig/FLAIR_stripped_registered.nii.gz"
     mask_name = "orig/anomaly_segmentation.nii.gz"
 
-    print("Loading training data...")
+    print("Finding training data paths...")
     train_files = []
     for file in getPatients(init_path / "train"):
         #t1_path = file / t1_name
         flair_path = file / flair_name
         mask_path = file / mask_name
         train_files.append((flair_path,mask_path)) #(t1_path,flair_path,mask_path)
-
-    print("Loading test data...")
+    print(f"Found {len(train_files)} patients.")
+    print("Finding test data paths...")
     test_files = []
     for file in getPatients(init_path / "test"):
         #t1_path = file / t1_name
         flair_path = file / flair_name
         mask_path = file / mask_name
         test_files.append((flair_path,mask_path)) #(t1_path,flair_path,mask_path)
-
+    print(f"Found {len(test_files)} patients.")
     train_frac,val_frac = split_tuple
     if train_frac + val_frac >1:
         raise ValueError(f"Proportions ({train_frac},{val_frac}) sum to greater than 1.")
     
-    def getimg(fileimg,is_sup,apply_trans=False):
-        #t1_imgs = []
-        flair_imgs = []
-        mask_imgs = []
+    def load_files(files,outputpath):
+        imgnum = 0
+        datinfo = {'0':[],'1':[]}
 
-        #t1 = nib.load(fileimg[0]).get_fdata()
-        #assert np.min(t1)==0
-        #####t1 = t1 + np.abs(np.min(t1))
-        #t1 = t1 / np.max(t1)
+        if not os.path.exists(outputpath/'datinfo.gz'):
+            for fileimg in tqdm(files):
+                flair = nib.load(fileimg[0]).get_fdata() #nib.load(fileimg[1]).get_fdata()
+                tempdim = flair.shape[2]//2
+                slices = range(tempdim-20,tempdim+20+1)
+                flair = flair[:,:,slices]
+                assert np.min(flair)==0
+                #flair = flair + np.abs(np.min(flair))
+                flair = flair / np.max(flair)
 
-        try:
-            flair = nib.load(fileimg[0]).get_fdata() #nib.load(fileimg[1]).get_fdata()
+                mask =  nib.load(fileimg[1]).get_fdata() #nib.load(fileimg[2]).get_fdata()
+                mask = mask[:,:,slices]
 
-            assert np.min(flair)==0
-            #flair = flair + np.abs(np.min(flair))
-            flair = flair / np.max(flair)
 
-            mask =  nib.load(fileimg[1]).get_fdata() #nib.load(fileimg[2]).get_fdata()
-            #print(np.unique(mask))
-            #print(np.max(mask),np.min(mask))
-            #sns.heatmap(mask[:,:,mask.shape[2]//2+0])
-            #plt.show()
-            #mask = mask + np.abs(np.min(mask))
-            #mask = mask / np.max(mask)
-            assert np.min(mask)==0
+                for diff in range(len(slices)):
+                    flair_im = flair[:,:,diff]
+                    flair_im = np.expand_dims(flair_im, axis=0)
 
-            tempdim = flair.shape[2]//2
-        except:
-            print(f"{fileimg[0]} broken or {fileimg[1]} broken")
-            return flair_imgs,mask_imgs
-        
-        
-        img_dim = 200
-        n_resample = 1
-        for diff in [-1,0,1]:
-            for _n in range(n_resample):
-                rotation = random.uniform(-15,15)
-                shearing = random.uniform(-1.,.1)
-                x_scale = random.uniform(.9,1.1)
-                y_scale = random.uniform(.9,1.1)
-                transform = [[x_scale, 0, 0],[shearing, y_scale, 0],[0, 0, 1]]
-                #print(rotation,shearing,x_scale,y_scale)
+                    mask_im = mask[:,:,diff]
+                    log_1 = np.logical_and(mask_im>=.5,mask_im<=1.5)
+                    mask_im[mask_im<.5]=0
+                    mask_im[log_1]=1
+                    mask_im[mask_im>1.5]=2
+                    mask_im = np.expand_dims(mask_im, axis=0)
 
-                def manip_img(temp_im):
-                    #print("New Img")
-                    #print(temp_im.shape)
+                    comb_im = np.stack((flair_im,mask_im), axis=0)
+                    is_abnormal=0
+                    if np.any(mask_im):
+                        is_abnormal=1
+                    del flair_im,mask_im
 
-                    #temp_im = rotate(temp_im,rotation,reshape=False)
-                    '''height, width =temp_im.shape
-                    #print(np.min(temp_im),np.max(temp_im))
+                    save_np(comb_im,outputpath,f'{is_abnormal}_{imgnum}')
 
-                    #print(np.min(temp_im))
-                    #sns.heatmap(temp_im)
-                    #plt.show()
-                    temp_im = affine_transform(temp_im,transform,offset=(0, -height//2, 0),output_shape=(height, width+height//2),prefilter=False)
-                    #sns.heatmap(temp_im)
-                    #plt.show()
-                    #print(np.min(temp_im),np.max(temp_im))
-                    #print(temp_im.shape)
-
-                    temp_im = im.fromarray(temp_im)
-                    #print(np.min(temp_im))
-                    temp_im = temp_im.rotate(rotation,expand=True)
-
-                    #print(np.min(temp_im))
-                    #print(temp_im.size)
-                    curr_height,curr_width = temp_im.size
-                    new_width = img_dim if curr_width >= img_dim else curr_width
-                    new_height = img_dim if curr_height >= img_dim else curr_height
-                    left = (curr_width - new_width)/2
-                    top = (curr_height - new_height)/2
-                    right = (curr_width + new_width)/2
-                    bottom = (curr_height + new_height)/2
-
-                    #sns.heatmap(temp_im)
-                    #plt.show()
-                    temp_im = temp_im.crop((left, top, right, bottom))
-                    temp_im = np.array(temp_im)
-
-                    #sns.heatmap(temp_im)
-                    #plt.show()
-                    #print(temp_im.shape)
-
-                    temp_im = np.pad(temp_im, [(0,img_dim-new_height), (0,img_dim-new_width)], mode='constant')
-
-                    #print(temp_im.shape)
-                    assert temp_im.shape==(img_dim,img_dim)'''
-                    return temp_im
-
-                #print("T1")
-                #t1
-                #t1_im = t1[:,:,tempdim+diff]
-                #t1_im = manip_img(t1_im)
-                #t1_im = np.expand_dims(t1_im, axis=0)
-
-                #mean = np.mean(t1)
-                #std = np.std(t1)
-                #mx = np.max(t1)
-                #if mx != 0:
-                #    t1_im = t1_im/mx
-                #t1_im = (t1_im-mean)/std
-
-                #print(np.min(t1_im))
-
-                #flair
-                flair_im = flair[:,:,tempdim+diff]
-                flair_im = manip_img(flair_im)
-                flair_im = np.expand_dims(flair_im, axis=0)
-
-                #mean = np.mean(flair)
-                #std = np.std(flair)
-                #mx = np.max(flair)
-                #if mx != 0:
-                #    flair_im = flair_im/mx
-                #flair_im = (flair_im-mean)/std
-
-                #mask
-                mask_im = mask[:,:,tempdim+diff]
-                mask_im = manip_img(mask_im)
-                #mx = np.max(mask_im)
-                #if mx != 0:
-                #    mask_im = mask_im/mx
-                mask_im[mask_im!=1]= 0
-                mask_im = np.expand_dims(mask_im, axis=0)
-
-                if is_sup==True or np.max(mask_im) != 0:
-                    #t1_imgs.append(t1_im)
-                    flair_imgs.append(flair_im)
-                    mask_imgs.append(mask_im)
-
-        return flair_imgs,mask_imgs #t1_imgs,flair_imgs,mask_imgs
-
-    def load_files(files,is_sup):
-        filtered_files = []
-        for fileimg in files:
-            flair_imgs,mask_imgs = getimg(fileimg,is_sup) #t1_imgs,flair_imgs,mask_imgs
-            for i in range(len(flair_imgs)):
-                #merge_imgs = np.stack((t1_imgs[i],flair_imgs[i]), axis=0)
-                #merge_imgs = np.moveaxis(merge_imgs,0,-1)
-                filtered_files.append((flair_imgs[i],mask_imgs[i])) #(t1_imgs[i],flair_imgs[i],mask_imgs[i])
-        return filtered_files
+                    filepath = str(outputpath / f'{is_abnormal}_{imgnum}.gz')
+                    datinfo[str(is_abnormal)].append(filepath)
+                    imgnum+=1
+                    del comb_im
+            save_json(datinfo,outputpath,'datinfo')
+        else:
+            print("Data already filtered...")
+            datinfo = read_json(outputpath/'datinfo')
+        return datinfo
     
-    dat_len_train = len(train_files)
-    split_indices = np.arange(dat_len_train)
-    np.random.shuffle(split_indices)
-    train_indices = split_indices[0:int(dat_len_train*train_frac)]
-    val_indices = split_indices[int(dat_len_train*train_frac):int(dat_len_train*train_frac)+int(dat_len_train*val_frac)]
+    print("Loading training data...")
+    traindict = load_files(train_files,folder / 'wmh_train')
+    print("Loading test data...")
+    testdict = load_files(test_files,folder / 'wmh_test')
 
-    val_files = [train_files[i] for i in val_indices]
-    train_files = [train_files[i] for i in train_indices]
+    del train_files,test_files
 
-    print(f"Found {len(test_files)} test patients, {len(val_files)} val patients, {len(train_files)} train patients.")
+    np.random.shuffle(testdict["0"])
+    np.random.shuffle(testdict["1"])
+    filtered_test_files = testdict["0"] + testdict["1"]
+    numtestnorm = len(testdict["0"])
+    numtestabnorm = len(testdict["1"])
+    print(f"Test data has {numtestnorm} normal and {numtestabnorm} abnormal cases.")
+    filtered_t_files= traindict["0"] + traindict["1"]
+    print(f"Training data has {len(filtered_t_files)} cases total.")
+    num_sup = len(traindict["1"])
+    num_unsup = len(traindict["0"])
+    print(f"In that are {num_unsup} normal and {num_sup} abnormal cases.")
+    dat_len_train = num_sup + num_unsup
 
-    filtered_train_files = load_files(train_files,supervised)
-    filtered_val_files = load_files(val_files,True)
-    filtered_test_files = load_files(test_files,True)
+    if supervised:
+        #num_train_files = int(dat_len_train*train_frac)
+        num_train_unsup = int(num_unsup*train_frac)
+        num_train_sup = int(num_sup*train_frac)
+        filtered_train_files = traindict["0"][:num_train_unsup] + traindict["1"][:num_train_sup]
+        filtered_val_files = traindict["0"][num_train_unsup:] + traindict["1"][num_train_sup:]
+        print(f"Putting {num_train_unsup} normal and {num_train_sup} abnormal cases in training set ({num_unsup-num_train_unsup} normal, {num_sup-num_train_sup} abnormal in validation set).")
+    else:
+        num_train_files = min(int(dat_len_train*train_frac),num_unsup)
+        print(f"Putting {num_train_files} normal cases in training set ({num_unsup-num_train_files} in validation set).")
+        filtered_train_files = filtered_t_files[:num_train_files]
+        filtered_val_files = filtered_t_files[num_train_files:]
   
     print(f"Added {len(filtered_train_files)} train, {len(filtered_val_files)} val, {len(filtered_test_files)} test.")
 
     return filtered_train_files,filtered_val_files,filtered_test_files
-
 
 class MedNISTDataset(torch.utils.data.Dataset):
     '''Used to load data in DataLoader'''
@@ -382,9 +305,14 @@ class WMHDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
     def __getitem__(self, index):
-        #input image, image mask
-        #return np.concatenate((self.image_files[index][0],self.image_files[index][1]),axis=0),self.image_files[index][2]
-        return self.image_files[index][0],self.image_files[index][1] #self.image_files[index][1],self.image_files[index][2]
+        if type(index)==int:
+            dat = read_np(self.image_files[index])
+        else:
+            r = range(self.__len__())
+            dat = np.asarray([read_np(self.image_files[i]) for i in r[index]])
+        flair = dat[0].astype(np.float32)
+        mask = dat[1].astype(np.float32)
+        return flair,mask
 
 
 def loadData(exp_name):
@@ -469,7 +397,7 @@ def loadData(exp_name):
                 mask_imgs = loadDSprites()
                 train_x,val_x,test_x  = loadMNIST(dat_split,image_files,mask_imgs,sprite_chances,maskmax)
             elif "wmh" in exp_name:
-                train_x,val_x,test_x  = loadWMH(dat_split,root_dir,is_supervised)
+                train_x,val_x,test_x  = loadWMH(dat_split,root_dir,folder,is_supervised)
             np.save(os.path.join(folder,train_file_name),train_x)
             np.save(os.path.join(folder,val_file_name),val_x)
             np.save(os.path.join(folder,test_file_name),test_x)
@@ -495,7 +423,7 @@ def loadData(exp_name):
                     mask_imgs = loadDSprites()
                     train_x,val_x,test_x  = loadMNIST(dat_split,image_files,mask_imgs,sprite_chances[i],maskmax)
                 elif "wmh" in exp_name:
-                    train_x,val_x,test_x  = loadWMH(dat_split,root_dir,is_supervised[i])
+                    train_x,val_x,test_x  = loadWMH(dat_split,root_dir,folder,is_supervised[i])
                 np.save(os.path.join(folder,train_file_name[i]),train_x)
                 np.save(os.path.join(folder,val_file_name[i]),val_x)
                 np.save(os.path.join(folder,test_file_name[i]),test_x)

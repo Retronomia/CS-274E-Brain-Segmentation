@@ -3,31 +3,56 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 import torch.nn as nn
 import math
+import SimpleITK as sitk
 from utils import *
+import scipy.spatial
 import os
+from scipy.stats import bootstrap
 
 
 
-
-def metrics(y_stat,y_mask,type,folder,epoch):
+def metrics(y_stat,y_mask,mtype,folder,epoch):
     '''generate DICE, AUPRC, AUROC'''
     ensure_folder_exists(folder)
+    
+    flat_mask = y_mask.astype(bool).astype(int).flatten()
+    tot_orig_vals = len(flat_mask)
+    sel_vals = np.logical_or(flat_mask ==0, flat_mask==1)
+    flat_mask = flat_mask[sel_vals]
+    flat_stat = y_stat.flatten()
+    flat_stat = flat_stat[sel_vals]
+    
+
+    #num = 0
+    #denom = y_mask.shape[0]
+    #for img in y_mask:
+    #    if any(e == 1 for e in np.unique(img)):
+    #        num+=1
+    '''q = np.sum(flat_mask)/tot_orig_vals #num/denom
+    print("Quantile:",q)
+    quants = torch.quantile(torch.from_numpy(y_stat),q,dim=0)
+    y_segmented = (torch.from_numpy(y_stat) > quants).float()
+    flat_segmented = y_segmented.cpu().numpy().flatten()
+    flat_segmented = flat_segmented[sel_vals]
+    testdice = 1.0 - scipy.spatial.distance.dice(flat_mask,flat_segmented) 
+    print("Alt dice method: ",testdice)'''
+
+    #y_thresh = (y_stat > diceThreshold).astype(int)
+    #print(getlAVD(y_mask,y_thresh))
+    
 
     #DICE
     diceScore,diceThreshold = compute_dice_curve_recursive(
-        y_stat,y_mask,
-        plottitle=f"DICE vs L1 Threshold Curve for {type} Samples",
+        flat_stat,flat_mask,
+        plottitle=f"DICE vs L1 Threshold Curve for {mtype} Samples",
         folder = folder,
         file_name = f'dicePC_{epoch}',
         granularity=5
         )
-
-
-    flat_stat = y_stat.flatten()
-    flat_mask = y_mask.astype(bool).astype(int).flatten()
+ 
     #AUROC
     diff_auc = compute_roc(flat_stat,flat_mask,
-        plottitle=f"ROC Curve for {type} Samples",
+        plottitle=f"ROC Curve for {mtype} Samples",
         folder = folder,
         file_name= f'rocPC_{epoch}'
     )
@@ -35,14 +60,72 @@ def metrics(y_stat,y_mask,type,folder,epoch):
     #AUPRC
     diff_auprc = compute_prc(
         flat_stat,flat_mask,
-        plottitle=f"Precision-Recall Curve for {type} Samples",
+        plottitle=f"Precision-Recall Curve for {mtype} Samples",
         folder = folder,
         file_name=f'prcPC_{epoch}'
     )
-
-    del flat_stat,flat_mask
+    # del flat_stat,flat_mask
     return diff_auc,diff_auprc,diceScore,diceThreshold
 
+
+
+
+def getHausdorff(testImage, resultImage):
+    """Compute the Hausdorff distance."""
+    
+    # Hausdorff distance is only defined when something is detected
+    resultStatistics = sitk.StatisticsImageFilter()
+    resultStatistics.Execute(resultImage)
+    if resultStatistics.GetSum() == 0:
+        return float('nan')
+        
+    # Edge detection is done by ORIGINAL - ERODED, keeping the outer boundaries of lesions. Erosion is performed in 2D
+    eTestImage   = sitk.BinaryErode(testImage, (1,1,0) )
+    eResultImage = sitk.BinaryErode(resultImage, (1,1,0) )
+    
+    hTestImage   = sitk.Subtract(testImage, eTestImage)
+    hResultImage = sitk.Subtract(resultImage, eResultImage)    
+    
+    hTestArray   = sitk.GetArrayFromImage(hTestImage)
+    hResultArray = sitk.GetArrayFromImage(hResultImage)   
+        
+    # Convert voxel location to world coordinates. Use the coordinate system of the test image
+    # np.nonzero   = elements of the boundary in numpy order (zyx)
+    # np.flipud    = elements in xyz order
+    # np.transpose = create tuples (x,y,z)
+    # testImage.TransformIndexToPhysicalPoint converts (xyz) to world coordinates (in mm)
+    testCoordinates   = [testImage.TransformIndexToPhysicalPoint(x.tolist()) for x in np.transpose( np.flipud( np.nonzero(hTestArray) ))]
+    resultCoordinates = [testImage.TransformIndexToPhysicalPoint(x.tolist()) for x in np.transpose( np.flipud( np.nonzero(hResultArray) ))]
+        
+            
+    # Use a kd-tree for fast spatial search
+    def getDistancesFromAtoB(a, b):    
+        kdTree = scipy.spatial.KDTree(a, leafsize=100)
+        return kdTree.query(b, k=1, eps=0, p=2)[0]
+    
+    # Compute distances from test to result; and result to test
+    dTestToResult = getDistancesFromAtoB(testCoordinates, resultCoordinates)
+    dResultToTest = getDistancesFromAtoB(resultCoordinates, testCoordinates)    
+    
+    return max(np.percentile(dTestToResult, 95), np.percentile(dResultToTest, 95))
+
+def getlAVD(testImage, resultImage):   
+    """Volume statistics."""
+    # Compute statistics of both images
+    predSum = np.sum(resultImage,axis=(1,2,3))
+    testSum = np.sum(testImage,axis=(1,2,3))
+    print(testSum)
+    avd = np.abs(np.log(predSum-testSum/testSum))*100
+    print(avd.shape)
+    #AVDs = float(abs(testStatistics.GetSum() - resultStatistics.GetSum())) / float(testStatistics.GetSum()) * 100  
+    #fail here plz
+    meanAVD = np.mean(avd)
+    bootstrap_ci = bootstrap((avd,), np.median, confidence_level=0.95,random_state=1, method='percentile',n_resamples=2000)
+    confLow,confUpper = bootstrap_ci.confidence_interval
+    #view 95% boostrapped confidence interval
+    print(confLow,confUpper)
+    #return meanAVD,confLow,confUpper
+    return meanAVD,confLow,confUpper
 
 #below here is modified from the brainweb github code
 #I wanted to have the same dice algorithm
@@ -56,7 +139,7 @@ def compute_dice_curve_recursive(predictions,labels,folder=None,file_name=None,g
     min_threshs, max_threshs = min(datadict["threshs"]), max(datadict["threshs"])
     buffer_range = math.fabs(min_threshs - max_threshs) * 0.02
     x_min, x_max = min(datadict["threshs"]) - buffer_range, max(datadict["threshs"]) + buffer_range
-    fig = plt.figure()
+    '''fig = plt.figure()
     plt.plot(datadict["threshs"],datadict["scores"], color='darkorange', lw=2, label='DICE vs Threshold Curve')
     plt.xlim([x_min, x_max])
     plt.ylim([0.0, 1.05])
@@ -72,18 +155,19 @@ def compute_dice_curve_recursive(predictions,labels,folder=None,file_name=None,g
         save_json(datadict,folder,file_name,gz=True)
         plt.close(fig)
     else:
-        plt.show()
+        plt.show()'''
 
     best_score = datadict["best_score"]
     best_threshold = datadict["best_threshold"]
 
-    del datadict,fig,min_threshs,max_threshs,buffer_range,x_min,x_max
+    del datadict,min_threshs,max_threshs,buffer_range,x_min,x_max
 
     return best_score, best_threshold
 
-
 def dice(P, G):
     '''This calculates DICE using set cardinality formula'''
+
+
     psum = np.sum(P.flatten())
     gsum = np.sum(G.flatten())
     pgsum = np.sum(np.multiply(P.flatten(), G.flatten()))
@@ -109,6 +193,8 @@ def compute_dice_score(predictions, labels, granularity):
 
         for i, t in enumerate(xfrange(start, stop, (1.0 / (10.0 ** decimal)))):
             score = dice(np.where(predictions > t, 1, 0), labels)
+            #testdice = 1.0 - scipy.spatial.distance.dice(labels,np.where(predictions > t, 1, 0)) 
+            #print(f"Orig:{score}, New:{testdice}")
             if i >= 2 and score <= _scores[i - 1] and not had_recursion:
                 #this walks through previous step as well despite checking the 2nd and 3rd element.
                 #Personally that's a little too greedy (this reruns a whole bunch of thresholds) but it works
@@ -132,7 +218,7 @@ def compute_prc(predictions, labels, folder=None,file_name=None, plottitle="Prec
     datadict["precisions"], datadict["recalls"], _thresholds = precision_recall_curve(labels, predictions)
     datadict["auprc"] = average_precision_score(labels, predictions)
 
-    fig = plt.figure()
+    '''fig = plt.figure()
     plt.step(datadict["recalls"], datadict["precisions"], color='b', alpha=0.2, where='post')
     plt.fill_between(datadict["recalls"],datadict["precisions"], step='post', alpha=0.2, color='b')
     plt.xlabel('Recall')
@@ -147,10 +233,10 @@ def compute_prc(predictions, labels, folder=None,file_name=None, plottitle="Prec
         save_json(datadict,folder,file_name,gz=True)
         plt.close(fig)
     else:
-        plt.show()
+        plt.show()'''
 
     auprc= datadict["auprc"]
-    del datadict,fig,_thresholds
+    del datadict,_thresholds
     return auprc
 
 def compute_roc(predictions, labels, folder=None, file_name=None, plottitle="ROC Curve"):
@@ -159,7 +245,7 @@ def compute_roc(predictions, labels, folder=None, file_name=None, plottitle="ROC
     datadict["_fpr"], datadict["_tpr"], datadict["thresholds"] =  roc_curve(labels, predictions)
     datadict["roc_auc"] = auc(datadict["_fpr"], datadict["_tpr"])
   
-    fig = plt.figure()
+    '''fig = plt.figure()
     plt.plot(datadict["_fpr"], datadict["_tpr"], color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % datadict["roc_auc"])
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     plt.xlim([0.0, 1.0])
@@ -175,10 +261,10 @@ def compute_roc(predictions, labels, folder=None, file_name=None, plottitle="ROC
         save_json(datadict,folder,file_name,gz=True)
         plt.close(fig)
     else:
-        plt.show()
+        plt.show()'''
 
     roc_auc = datadict["roc_auc"]
 
-    del datadict,fig
+    del datadict
 
     return roc_auc

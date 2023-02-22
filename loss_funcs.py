@@ -33,6 +33,10 @@ def KL_SP_Loss():
             return (1 - mask)*anom + mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
+            res = torch.flatten(res)
+            mask = torch.flatten(mask)
+            m = torch.logical_or(mask ==0,mask==1)
+            res=res[m]
             return torch.mean(res)
         else:
             return res
@@ -57,6 +61,10 @@ def Custom_Loss():
             return (1 - mask)*anom + mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
+            res = torch.flatten(res)
+            mask = torch.flatten(mask)
+            m = torch.logical_or(mask ==0,mask==1)
+            res=res[m]
             return torch.mean(res)
         else:
             return res
@@ -88,6 +96,10 @@ def CAE_SP_Loss():
             return (1 - mask)*anom + mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
+            res = torch.flatten(res)
+            mask = torch.flatten(mask)
+            m = torch.logical_or(mask ==0,mask==1)
+            res=res[m]
             return torch.mean(res)
         else:
             return res

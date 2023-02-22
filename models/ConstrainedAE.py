@@ -1,9 +1,9 @@
 from models.helper_funcs.modelhelper import *
 class ConstrainedAE(nn.Module):
-    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128):
+    def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128,image_shape=64,inp_size=1):
         super(ConstrainedAE,self).__init__()
-        
-        self.encoder = Encoder(num_layers,kernel_size,stride,padding,dilation)
+
+        self.encoder = Encoder(num_layers,kernel_size,stride,padding,dilation,image_shape,inp_size)
         dim,shape,dimshapes = self.encoder.get_dim()
         #bottleneck code
         input_size=dim
@@ -27,12 +27,12 @@ class ConstrainedAE(nn.Module):
         self.out_lin = nn.Linear(linear_size,bottle_chan*input_shape**2)
         self.drop_lin = nn.Dropout(p=0.1)
 
-        self.reshape_out = Reshape(bottle_chan*input_shape**2,input_size//8)
+        self.reshape_out = Reshape(bottle_chan*input_shape**2,bottle_chan)
         
-        self.convout = nn.Conv2d(input_size//8,input_size,self.kernel_size,self.stride,padding="same")
+        self.convout = nn.Conv2d(bottle_chan,input_size,self.kernel_size,self.stride,padding="same")
 
         #end bottleneck code
-        self.decoder = Decoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation)
+        self.decoder = Decoder(dim,shape,dimshapes,num_layers,kernel_size,stride,padding,dilation,image_shape)
 
     def forward(self,input):
         x = self.encoder(input)
