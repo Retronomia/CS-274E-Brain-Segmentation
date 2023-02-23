@@ -6,39 +6,43 @@ from run_experiment import objective,test
 import time
 import optuna
 from optuna.trial import TrialState
-
+import argparse
+import pickle
+import string
 folder_name = ""
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+
 def loadobjective(trial):
-    global folder_name,device
-    exp_name = "wmh_usp"
-    model_name = "AutoEnc"
-    batch_size = 4
+    global folder_name,device,args_model_name,args_exp_name,args_loss_name
+    exp_name = args_exp_name
+    model_name = args_model_name
+    batch_size = 8
 
 
     # Generate values
     optimizerdict = dict()
-    optimizerdict['lr'] = 0.001
-    b1= 0.71
-    b2= 0.965 
+    optimizerdict['lr'] = trial.suggest_float("lr", 0.0008, 0.002, step=0.0001) #0.001
+    b1= trial.suggest_float("b1", 0.70, 0.95, step=0.05) #0.71
+    b2= trial.suggest_float("b2", 0.90, 0.99, step=0.01) #0.965 
     optimizerdict['betas']=(b1,b2)
-    optimizerdict['weight_decay']=0.0002
+    optimizerdict['weight_decay']= trial.suggest_float("weight_decay", 0, 0.0003,step=0.0001) #0.0002
     
     learnerdict = dict()
-    learnerdict['gamma']=.75
+    learnerdict['gamma']= trial.suggest_float("gamma",.7,1,step=.05) #.75
     
     encoderdict = dict()
     encoderdict['num_layers'] = 5
-    encoderdict['kernel_size'] = [5,5,5,5,5] 
+    encoderdict['kernel_size'] = [1,2,3,4,5] 
     encoderdict['stride'] = [1,2,1,1,1] 
-    encoderdict['padding'] = [1,1,1,2,1] 
+    encoderdict['padding'] = [1,2,2,2,2] 
     encoderdict['dilation'] = [1,1,1,1,1] 
     encoderdict['latent'] = 128 
     encoderdict['image_shape']=240
 
 
-    loss_name = "L1_Loss"
+    loss_name = args_loss_name
 
 
     loaderdict = dict()
@@ -50,12 +54,12 @@ def loadobjective(trial):
     loaderdict['optimizerdict'] = optimizerdict
     loaderdict['learnerdict'] = learnerdict
     loaderdict['encoderdict'] = encoderdict
-    max_epochs = 2
+    max_epochs = 50
     loaderdict['max_epochs'] = max_epochs
 
 
-    time_stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.gmtime())
-    folder_name=str(loaderdict['trial_num'])+"-"+exp_name+"-"+model_name+'-'+loss_name+'-'+time_stamp
+    #time_stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.gmtime())
+    folder_name=study_name + '-' + str(loaderdict['trial_num'])+"-"+exp_name+"-"+model_name+'-'+loss_name #+'-'+time_stamp
     loaderdict['folder_name']=folder_name
 
     print(f"Testing model with parameters: {loaderdict}")
@@ -63,27 +67,43 @@ def loadobjective(trial):
     return objective(trial,loaderdict,device)
 
 
-vae_study = optuna.create_study(direction="minimize",study_name="teststudy")
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exp_name', type=str, default='wmh_usp', help='experiment name')
+    parser.add_argument('--model_name', type=str, default='AutoEnc', help='model name')
+    parser.add_argument('--loss_name', type=str, default='L1_Loss', help='loss name')
+    args = parser.parse_args()
+    args_model_name = args.model_name
+    args_exp_name = args.exp_name
+    args_loss_name = args.loss_name
 
-vae_study.optimize(loadobjective, n_trials=1,timeout=14400,gc_after_trial=True,show_progress_bar=False)
+    study_name = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
+ 
+    vae_study = optuna.create_study(direction="minimize",study_name=study_name)
 
-pruned_trials = vae_study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-complete_trials = vae_study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    vae_study.optimize(loadobjective, n_trials=1,timeout=60*60*4,gc_after_trial=True,show_progress_bar=False)
 
-print("Study statistics: ")
-print("  Number of finished trials: ", len(vae_study.trials))
+    pruned_trials = vae_study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = vae_study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-print("  Number of pruned trials: ", len(pruned_trials))
-print("  Number of complete trials: ", len(complete_trials))
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(vae_study.trials))
 
-print("Best trial:")
-trial = vae_study.best_trial
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
 
-print("  Value: ", trial.value)
+    print("Best trial:")
+    trial = vae_study.best_trial
 
-print("  Params: ")
-for key, value in trial.params.items():
-    print("    {}: {}".format(key, value))
+    print("  Value: ", trial.value)
 
-#folder_name = "0-wmh_usp-AutoEnc-L1_Loss-2023-02-21 08-53-14"
-#test(folder_name,'experiments',device)
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
+
+    with open('experiments/'+study_name+'.pickle','wb') as f:
+        pickle.dump(vae_study,f)
+
+    best_folder = study_name + '-' + str(trial.number)+"-"+args_exp_name+"-"+args_model_name+'-'+args_loss_name
+    #folder_name = "0-wmh_usp-AutoEnc-L1_Loss-2023-02-21 08-53-14"
+    test(best_folder,'experiments',device)

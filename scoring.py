@@ -8,7 +8,7 @@ from utils import *
 import scipy.spatial
 import os
 from scipy.stats import bootstrap
-from torchmetrics.functional import dice,average_precision,auroc
+from torchmetrics.functional import dice,average_precision,auroc,recall,f1_score
 
 
 def metrics(y_stat,y_mask,mtype,folder,epoch):
@@ -28,15 +28,19 @@ def metrics(y_stat,y_mask,mtype,folder,epoch):
     #for img in y_mask:
     #    if any(e == 1 for e in np.unique(img)):
     #        num+=1
-    '''q = np.sum(flat_mask)/tot_orig_vals #num/denom
-    print("Quantile:",q)
-    quants = torch.quantile(torch.from_numpy(y_stat),q,dim=0)
-    y_segmented = (torch.from_numpy(y_stat) > quants).float()
-    flat_segmented = y_segmented.cpu().numpy().flatten()
-    flat_segmented = flat_segmented[sel_vals]
-    testdice = 1.0 - scipy.spatial.distance.dice(flat_mask,flat_segmented) 
-    print("Alt dice method: ",testdice)'''
+    #q = torch.sum(flat_mask)/tot_orig_vals #num/denom
+    #print("Quantile:",q.item())
+    def imgwise_DICE(q,y_stat,flat_mask,sel_vals):
+        quants = torch.quantile(y_stat,q,dim=0)
+        y_segmented = (y_stat > quants).float()
+        flat_segmented = y_segmented.flatten()
+        flat_segmented = flat_segmented[sel_vals]
+        testdice = dice(flat_segmented.int(),flat_mask,average='none',num_classes=2)[1]
+        return testdice
+        #print("Alt dice method: ",testdice.item())
 
+    qthresh = [.1,.25,.5,.75,.8,.90]
+    dscores = [imgwise_DICE(t,y_stat,flat_mask,sel_vals) for t in qthresh]
     #y_thresh = (y_stat > diceThreshold).astype(int)
     #print(getlAVD(y_mask,y_thresh))
     
@@ -65,49 +69,12 @@ def metrics(y_stat,y_mask,mtype,folder,epoch):
         file_name=f'prcPC_{epoch}'
     )
     # del flat_stat,flat_mask
-    return diff_auc,diff_auprc,diceScore,diceThreshold
+    #f_recall = recall(flat_stat > diceThreshold,flat_mask,task='binary')
+    #f_f1_score = f1_score(flat_stat > diceThreshold,flat_mask,task='binary')
+
+    return diff_auc,diff_auprc,diceScore,diceThreshold,dscores,qthresh#,f_recall,f_f1_score
 
 
-
-
-def getHausdorff(testImage, resultImage):
-    """Compute the Hausdorff distance."""
-    
-    # Hausdorff distance is only defined when something is detected
-    resultStatistics = sitk.StatisticsImageFilter()
-    resultStatistics.Execute(resultImage)
-    if resultStatistics.GetSum() == 0:
-        return float('nan')
-        
-    # Edge detection is done by ORIGINAL - ERODED, keeping the outer boundaries of lesions. Erosion is performed in 2D
-    eTestImage   = sitk.BinaryErode(testImage, (1,1,0) )
-    eResultImage = sitk.BinaryErode(resultImage, (1,1,0) )
-    
-    hTestImage   = sitk.Subtract(testImage, eTestImage)
-    hResultImage = sitk.Subtract(resultImage, eResultImage)    
-    
-    hTestArray   = sitk.GetArrayFromImage(hTestImage)
-    hResultArray = sitk.GetArrayFromImage(hResultImage)   
-        
-    # Convert voxel location to world coordinates. Use the coordinate system of the test image
-    # np.nonzero   = elements of the boundary in numpy order (zyx)
-    # np.flipud    = elements in xyz order
-    # np.transpose = create tuples (x,y,z)
-    # testImage.TransformIndexToPhysicalPoint converts (xyz) to world coordinates (in mm)
-    testCoordinates   = [testImage.TransformIndexToPhysicalPoint(x.tolist()) for x in np.transpose( np.flipud( np.nonzero(hTestArray) ))]
-    resultCoordinates = [testImage.TransformIndexToPhysicalPoint(x.tolist()) for x in np.transpose( np.flipud( np.nonzero(hResultArray) ))]
-        
-            
-    # Use a kd-tree for fast spatial search
-    def getDistancesFromAtoB(a, b):    
-        kdTree = scipy.spatial.KDTree(a, leafsize=100)
-        return kdTree.query(b, k=1, eps=0, p=2)[0]
-    
-    # Compute distances from test to result; and result to test
-    dTestToResult = getDistancesFromAtoB(testCoordinates, resultCoordinates)
-    dResultToTest = getDistancesFromAtoB(resultCoordinates, testCoordinates)    
-    
-    return max(np.percentile(dTestToResult, 95), np.percentile(dResultToTest, 95))
 
 def getlAVD(testImage, resultImage):   
     """Volume statistics."""

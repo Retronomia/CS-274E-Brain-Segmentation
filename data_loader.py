@@ -307,11 +307,14 @@ class WMHDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         if type(index)==int:
             dat = read_np(self.image_files[index])
+            flair = dat[0].astype(np.float32)
+            mask = dat[1].astype(np.float32)
         else:
+            print("WARNING: slicing the dataloader can lead to large memory allocation.")
             r = range(self.__len__())
             dat = np.asarray([read_np(self.image_files[i]) for i in r[index]])
-        flair = dat[0].astype(np.float32)
-        mask = dat[1].astype(np.float32)
+            flair = dat[index,0].astype(np.float32)
+            mask = dat[index,1].astype(np.float32)
         return flair,mask
 
 
