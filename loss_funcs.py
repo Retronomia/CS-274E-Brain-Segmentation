@@ -33,10 +33,8 @@ def KL_SP_Loss():
             return (1 - mask)*anom + mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
-            res = torch.flatten(res)
-            mask = torch.flatten(mask)
-            m = torch.logical_or(mask ==0,mask==1)
-            res=res[m]
+            mask = torch.logical_or(mask ==0,mask==1)
+            res=res[mask]
             return torch.mean(res)
         else:
             return res
@@ -61,10 +59,8 @@ def Custom_Loss():
             return (1 - mask)*anom + mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
-            res = torch.flatten(res)
-            mask = torch.flatten(mask)
-            m = torch.logical_or(mask ==0,mask==1)
-            res=res[m]
+            mask = torch.logical_or(mask ==0,mask==1)
+            res=res[mask]
             return torch.mean(res)
         else:
             return res
@@ -96,21 +92,25 @@ def CAE_SP_Loss():
             return (1 - mask)*anom + mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
-            res = torch.flatten(res)
-            mask = torch.flatten(mask)
-            m = torch.logical_or(mask ==0,mask==1)
-            res=res[m]
+            mask = torch.where(mask==2)
+            res[mask]=0
             return torch.mean(res)
         else:
+            mask = torch.where(mask==2)
+            res[mask]=0
             return res
     def caeloss(pred,real,mask,z,z_rec,reduction='mean'):
         def formula(pred,real,mask,z,z_rec,reduction='mean'):
             rho = 1
+
             l2 = torch.sum(maskloss(pred,real,mask,reduction='none'),axis=[1, 2, 3]) #torch.mean(torch.nn.MSELoss(reduction='none')(pred,real),axis=[1,2,3])
+            
             rec_z = torch.mean(torch.nn.MSELoss(reduction='none')(z,z_rec),axis=1)
             return l2+rho*rec_z
         res = formula(pred,real,mask,z,z_rec)
         if reduction=='mean':
+            #mask = torch.logical_or(mask ==0,mask==1)
+            #res=res[mask]
             return torch.mean(res)
         else:
             return res

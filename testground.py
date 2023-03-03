@@ -2,9 +2,36 @@ from data_loader import loadData
 from utils import *
 import matplotlib.pyplot as plt
 import torch
+from monai.data import decollate_batch, DataLoader
+from tqdm import tqdm
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(device)
+train,val,test,loader = loadData("wmh_usp")
+train_ds = loader(train)
+train_loader = DataLoader(train_ds, batch_size=3,shuffle=True)
+
+enc = load_class("UNet")
+encoderdict = dict()
+encoderdict['num_layers'] = 4
+encoderdict['kernel_size'] = [3,2,4,2] 
+encoderdict['stride'] = [1,2,1,1] 
+encoderdict['padding'] = [1,1,1,2] 
+encoderdict['dilation'] = [1,1,1,1] 
+encoderdict['latent'] = 128 
+enc = enc(**encoderdict).to(device)
+
+enc.train()
+
+for batch_data, ground_truths in tqdm(train_loader,desc="Training"):
+    inputs = batch_data.to(device)
+    truths = ground_truths.to(device)
+    mu,sigma,z,z_rec = None,None,None,None
+
+    outputs= enc(inputs)
+    print(outputs.shape)
+    break
+
+
 '''
 loss_values = torch.tensor([], dtype=torch.float32, device=device)
 loss_values = torch.cat([loss_values, torch.tensor([123],device=device)], dim=0)

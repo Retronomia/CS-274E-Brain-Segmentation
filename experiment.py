@@ -16,30 +16,30 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def loadobjective(trial):
     global folder_name,device,args_model_name,args_exp_name,args_loss_name
-    exp_name = args_exp_name
+    exp_name = args_exp_name 
     model_name = args_model_name
-    batch_size = 8
-
+    batch_size = 4
+ 
 
     # Generate values
     optimizerdict = dict()
-    optimizerdict['lr'] = trial.suggest_float("lr", 0.0008, 0.002, step=0.0001) #0.001
-    b1= trial.suggest_float("b1", 0.70, 0.95, step=0.05) #0.71
-    b2= trial.suggest_float("b2", 0.90, 0.99, step=0.01) #0.965 
+    optimizerdict['lr'] = 0.0018 #trial.suggest_float("lr", 0.0008, 0.002, step=0.0001) #0.001
+    b1= 0.95 #trial.suggest_float("b1", 0.70, 0.95, step=0.05) #0.71
+    b2= 0.97 #trial.suggest_float("b2", 0.90, 0.99, step=0.01) #0.965 
     optimizerdict['betas']=(b1,b2)
-    optimizerdict['weight_decay']= trial.suggest_float("weight_decay", 0, 0.0003,step=0.0001) #0.0002
+    optimizerdict['weight_decay']= 0.0001 #trial.suggest_float("weight_decay", 0, 0.0003,step=0.0001) #0.0002
     
     learnerdict = dict()
-    learnerdict['gamma']= trial.suggest_float("gamma",.7,1,step=.05) #.75
+    learnerdict['gamma']= 0.8 #trial.suggest_float("gamma",.7,1,step=.05) #.75
     
     encoderdict = dict()
-    encoderdict['num_layers'] = 5
-    encoderdict['kernel_size'] = [1,2,3,4,5] 
-    encoderdict['stride'] = [1,2,1,1,1] 
-    encoderdict['padding'] = [1,2,2,2,2] 
-    encoderdict['dilation'] = [1,1,1,1,1] 
+    encoderdict['num_layers'] = 5 #4 #5
+    encoderdict['kernel_size'] = [1,2,3,4,5]  #[1,2,3,4] #[1,2,3,4,5] 
+    encoderdict['stride'] = [1,2,1,1,1]  #[1,2,1,1] #[1,2,1,1,1] 
+    encoderdict['padding'] = [1,2,2,2,2]  #[1,2,2,2] #[1,2,2,2,2] 
+    encoderdict['dilation'] = [1,1,1,1,1]  #[1,1,1,1] #[1,1,1,1,1] 
     encoderdict['latent'] = 128 
-    encoderdict['image_shape']=240
+    encoderdict['image_shape']= 240 #64 #240
 
 
     loss_name = args_loss_name
@@ -54,7 +54,7 @@ def loadobjective(trial):
     loaderdict['optimizerdict'] = optimizerdict
     loaderdict['learnerdict'] = learnerdict
     loaderdict['encoderdict'] = encoderdict
-    max_epochs = 50
+    max_epochs = 30
     loaderdict['max_epochs'] = max_epochs
 
 
@@ -106,4 +106,4 @@ if __name__=="__main__":
 
     best_folder = study_name + '-' + str(trial.number)+"-"+args_exp_name+"-"+args_model_name+'-'+args_loss_name
     #folder_name = "0-wmh_usp-AutoEnc-L1_Loss-2023-02-21 08-53-14"
-    test(best_folder,'experiments',device)
+    #test(best_folder,'experiments',device)

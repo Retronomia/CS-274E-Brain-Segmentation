@@ -100,6 +100,8 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
                     ax1 = fig.add_subplot(2,3,2)
                     threshplot = y_stat[num][0].clone()
                     threshplot[threshplot < diceThreshold] = 0
+                    threshplot[threshplot >= diceThreshold] = 1
+                    threshplot[mask]==0
                     ax1.imshow(threshplot.cpu(),vmin=0, vmax=1)
                     ax1.grid(False)
                     ax1.set_xticks([])
@@ -128,7 +130,9 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
                     ax3.set_title("Original Image", size=20)
 
                     ax4 = fig.add_subplot(2,3,6)
-                    ax4.imshow(truths[num][0].cpu(), cmap="gray", vmin=0, vmax=torch.max(truths[num][0]).item())
+                    truthplt = truths[num][0].clone()
+                    truthplt[mask] = 0
+                    ax4.imshow(truthplt.cpu(), cmap="gray", vmin=0, vmax=1)
                     ax4.grid(False)
                     ax4.set_xticks([])
                     ax4.set_yticks([])
@@ -283,11 +287,12 @@ def objective(trial,loaderdict,device):
     save_json(loaderdict,dir_name/folder_name,'experiment_info',gz=False)
     #now should have everything :D
     best_metric=None
-    val_interval = 1
+    val_interval = 10
 
     datadict = dict()
     datadict["val_losses"] = []
     datadict["train_losses"] = []
+    datadict["val_epochs"] = []
 
     for epoch in range(max_epochs):
         if type(loaderdict['loss_name']) is tuple:
@@ -305,6 +310,7 @@ def objective(trial,loaderdict,device):
         print(f"TRAIN: epoch {epoch + 1} average loss: {epoch_loss:.4f}")
         datadict["train_losses"].append(epoch_loss)
         if (epoch + 1) % val_interval == 0:
+            datadict["val_epochs"].append(epoch + 1)
             model.eval()
             with torch.no_grad():
                 statdict = score(model,val_loader,loss_function,loss_name,score_function,dir_name/folder_name,f'{epoch+1}',"Validation",device)
@@ -400,7 +406,7 @@ def storeResults(model,folder,best_metric,best_metric_epoch,datadict,epoch,loss_
     val_name = f'valRecErr'
     fig = plt.figure()
     eplen = range(1,epoch+2)
-    plt.plot(eplen,datadict["val_losses"], color='darkorange', lw=2)
+    plt.plot(datadict["val_epochs"],datadict["val_losses"], color='darkorange', lw=2)
     plt.xlabel('Epochs')
     plt.ylabel(f'{loss_name}')
     plt.title(f'Avg Val Loss Error ({loss_name})')
