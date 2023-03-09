@@ -23,14 +23,14 @@ def loadobjective(trial):
 
     # Generate values
     optimizerdict = dict()
-    optimizerdict['lr'] = 0.01 #trial.suggest_float("lr", 0.0008, 0.002, step=0.0001) #0.001
+    optimizerdict['lr'] =  .005 #trial.suggest_float("lr", 0.0008, 0.002, step=0.0001) #0.001
     b1= 0.95 #trial.suggest_float("b1", 0.70, 0.95, step=0.05) #0.71
     b2= 0.97 #trial.suggest_float("b2", 0.90, 0.99, step=0.01) #0.965 
     optimizerdict['betas']=(b1,b2)
     optimizerdict['weight_decay']= 0.0001 #trial.suggest_float("weight_decay", 0, 0.0003,step=0.0001) #0.0002
     
     learnerdict = dict()
-    learnerdict['gamma']= 0.95 #trial.suggest_float("gamma",.7,1,step=.05) #.75
+    learnerdict['gamma']= .95 #trial.suggest_float("gamma",.7,1,step=.05) #.75
     learnerdict['step_size']= 5
     
     encoderdict = dict()
@@ -47,6 +47,7 @@ def loadobjective(trial):
 
 
     loaderdict = dict()
+    loaderdict['use_tqdm'] = args_use_tqdm
     loaderdict['trial_num'] = trial.number
     loaderdict['exp_name'] = exp_name
     loaderdict['model_name'] = model_name
@@ -55,7 +56,7 @@ def loadobjective(trial):
     loaderdict['optimizerdict'] = optimizerdict
     loaderdict['learnerdict'] = learnerdict
     loaderdict['encoderdict'] = encoderdict
-    max_epochs = 1000
+    max_epochs = 500
     loaderdict['max_epochs'] = max_epochs
 
 
@@ -73,10 +74,12 @@ if __name__=="__main__":
     parser.add_argument('--exp_name', type=str, default='wmh_usp', help='experiment name')
     parser.add_argument('--model_name', type=str, default='AutoEnc', help='model name')
     parser.add_argument('--loss_name', type=str, default='L1_Loss', help='loss name')
+    parser.add_argument('--tqdm',action='store_true',help='use tqdm')
     args = parser.parse_args()
     args_model_name = args.model_name
     args_exp_name = args.exp_name
     args_loss_name = args.loss_name
+    args_use_tqdm = args.tqdm
 
     study_name = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
  

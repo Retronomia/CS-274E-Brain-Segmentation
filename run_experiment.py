@@ -42,7 +42,7 @@ def predict_vals(model,data,ground_truths,loss_function,chosen_loss,device):
     
     return temp_pred,loss.item()
 
-def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,mtype,device):
+def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,mtype,device,use_tqdm):
     '''get loss, reconstructions, masks, true image values'''
     model.eval()
     madeexc = False
@@ -57,7 +57,7 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
         #recalls = torch.tensor([], dtype=torch.float32, device=device)
         #f1_scores = torch.tensor([], dtype=torch.float32, device=device)
         batchnum = 0
-        for data, ground_truths in tqdm(loader, desc="Predictions and Scoring"):
+        for data, ground_truths in tqdm(loader, desc="Predictions and Scoring",disable=not use_tqdm):
 
             batchnum+=1
             val_images = data.to(device)
@@ -208,13 +208,13 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
 
         return statdict
 
-def train(model,train_loader,optimizer,loss_function,loss_name,device):
+def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
     '''Run through one epoch of training dataset on model'''
     model.train()
     epoch_loss = 0
     step = 0
     num_steps = len(train_loader)
-    for batch_data, ground_truths in tqdm(train_loader,desc="Training"):
+    for batch_data, ground_truths in tqdm(train_loader,desc="Training",disable=not use_tqdm):
         step += 1
         inputs = batch_data.to(device)
 
@@ -309,10 +309,15 @@ def objective(trial,loaderdict,device):
     dir_name = Path('./experiments')
     folder_name = loaderdict['folder_name']
     save_json(loaderdict,dir_name/folder_name,'experiment_info',gz=False)
+
+    try:
+        use_tqdm = loaderdict['use_tqdm']
+    except:
+        use_tqdm = True
     #now should have everything :D
     best_metric=None
     best_metric_epoch=0
-    val_interval = 1
+    val_interval = 100
 
     datadict = dict()
     datadict["val_losses"] = []
@@ -330,7 +335,7 @@ def objective(trial,loaderdict,device):
         print("-" * 10)
         print(f"epoch {epoch + 1}/{max_epochs}")
         try:
-            epoch_loss = train(model,train_loader,optimizer,loss_function,loss_name,device)
+            epoch_loss = train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm)
         except Exception as e:
             print(str(e))
             raise optuna.exceptions.TrialPruned()
@@ -340,7 +345,7 @@ def objective(trial,loaderdict,device):
             datadict["val_epochs"].append(epoch + 1)
             model.eval()
             with torch.no_grad():
-                statdict = score(model,val_loader,loss_function,loss_name,score_function,dir_name/folder_name,f'{epoch+1}',"Validation",device)
+                statdict = score(model,val_loader,loss_function,loss_name,score_function,dir_name/folder_name,f'{epoch+1}',"Validation",device,use_tqdm)
 
                 avg_reconstruction_err = np.mean(statdict['mean_losses'])
                 datadict["val_losses"].append(avg_reconstruction_err)
@@ -491,7 +496,12 @@ def test(folder_name,parent_dir,device):
     modeltype = load_class(model_name)
 
     encoderdict = loaderdict['encoderdict']
-    
+
+    try:
+        use_tqdm = loaderdict['use_tqdm']
+    except:
+        use_tqdm = True
+
     try:
         print("making model...")
         model = modeltype(**encoderdict).to(device)
@@ -510,7 +520,7 @@ def test(folder_name,parent_dir,device):
     score_function= nn.L1Loss(reduction='none')
     #now should have everything
     with torch.no_grad():
-        statdict = score(model,test_loader,loss_function,loss_name,score_function,parent_dir/folder_name,"test","Test",device)
+        statdict = score(model,test_loader,loss_function,loss_name,score_function,parent_dir/folder_name,"test","Test",device,use_tqdm)
 
         avg_reconstruction_err = np.mean(statdict['mean_losses'])
 
