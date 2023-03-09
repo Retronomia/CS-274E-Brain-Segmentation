@@ -10,7 +10,7 @@ from PIL import Image as im
 import seaborn as sns
 from scipy.ndimage import rotate, affine_transform
 from tqdm import tqdm
-
+import itertools
 def downloadMedNIST(root_dir):
     '''Downloads MedNIST dataset. Code from MedNIST tutorial.'''
     resource = "https://github.com/Project-MONAI/MONAI-extra-test-data/releases/download/0.8.1/MedNIST.tar.gz"
@@ -257,9 +257,15 @@ def loadWMH(split_tuple: tuple,init_path: str,folder: Path,supervised: bool):
 
     np.random.shuffle(testdict["0"])
     np.random.shuffle(testdict["1"])
-    filtered_test_files = testdict["0"] + testdict["1"]
+    np.random.shuffle(traindict["0"])
+    np.random.shuffle(traindict["1"])
+
     numtestnorm = len(testdict["0"])
     numtestabnorm = len(testdict["1"])
+    #want to alternate between normal and abnormal cases to avoid having no 1 values (metric failure)
+    filtered_test_files= [f for f in itertools.chain.from_iterable(itertools.zip_longest(testdict["0"],testdict["1"])) if f!=None]
+
+
     print(f"Test data has {numtestnorm} normal and {numtestabnorm} abnormal cases.")
     filtered_t_files= traindict["0"] + traindict["1"]
     print(f"Training data has {len(filtered_t_files)} cases total.")
@@ -272,14 +278,19 @@ def loadWMH(split_tuple: tuple,init_path: str,folder: Path,supervised: bool):
         #num_train_files = int(dat_len_train*train_frac)
         num_train_unsup = int(num_unsup*train_frac)
         num_train_sup = int(num_sup*train_frac)
-        filtered_train_files = traindict["0"][:num_train_unsup] + traindict["1"][:num_train_sup]
-        filtered_val_files = traindict["0"][num_train_unsup:] + traindict["1"][num_train_sup:]
+        filtered_train_files = [f for f in itertools.chain.from_iterable(itertools.zip_longest(traindict["0"][:num_train_unsup],traindict["1"][:num_train_sup])) if f!=None]
+        
+        #want to alternate between normal and abnormal cases to avoid having no 1 values (metric failure)
+        filtered_val_files = [f for f in itertools.chain.from_iterable(itertools.zip_longest(traindict["0"][num_train_unsup:],traindict["1"][num_train_sup:])) if f!=None]
+
         print(f"Putting {num_train_unsup} normal and {num_train_sup} abnormal cases in training set ({num_unsup-num_train_unsup} normal, {num_sup-num_train_sup} abnormal in validation set).")
     else:
         num_train_files = min(int(dat_len_train*train_frac),num_unsup)
         print(f"Putting {num_train_files} normal cases in training set ({num_unsup-num_train_files} in validation set).")
+        
         filtered_train_files = filtered_t_files[:num_train_files]
-        filtered_val_files = filtered_t_files[num_train_files:]
+        filtered_val_files = [f for f in itertools.chain.from_iterable(itertools.zip_longest(filtered_t_files[num_train_files:num_unsup],filtered_t_files[num_unsup:])) if f!=None]
+
   
     print(f"Added {len(filtered_train_files)} train, {len(filtered_val_files)} val, {len(filtered_test_files)} test.")
 

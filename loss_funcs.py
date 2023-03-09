@@ -52,15 +52,18 @@ def Custom_Loss():
     def anomaly_score(pred,real):
         return torch.abs(pred-real)
     def maskloss(pred,real,mask,reduction='mean'):
+        mask[mask==2]=0
         def formula(pred,real,mask):
             anom = anomaly_score(pred,real)
             anom_mod = anom.clone()
             anom_mod[anom_mod==0]=1e-6
-            return (1 - mask)*anom + mask/anom_mod
+            skew_anom = 1
+            skew_norm = 1
+            return skew_norm*(1 - mask)*anom + skew_anom*mask/anom_mod
         res = formula(pred,real,mask)
         if reduction=='mean':
-            mask = torch.logical_or(mask ==0,mask==1)
-            res=res[mask]
+            #mask = torch.logical_or(mask ==0,mask==1)
+            #res=res[mask]
             return torch.mean(res)
         else:
             return res

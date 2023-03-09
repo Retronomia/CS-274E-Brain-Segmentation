@@ -240,18 +240,20 @@ def objective(trial,loaderdict,device):
     exp_name = loaderdict['exp_name']
 
     train_x,val_x,test_x,loader = loadData(exp_name)
+    del test_x
 
     batch_size = loaderdict['batch_size']
     if type(train_x) is tuple:
         train_ds = tuple(loader(t) for t in train_x)
         train_loaders = tuple(DataLoader(t, batch_size=batch_size,shuffle=True) for t in train_ds)
+        val_x = val_x[0]
     else:
         train_ds = loader(train_x)
         train_loader = DataLoader(train_ds, batch_size=batch_size,shuffle=True)  #REMOVE POST
-        val_ds = loader(val_x)
-        val_loader  = DataLoader(val_ds, batch_size=batch_size)
+    val_ds = loader(val_x)
+    val_loader  = DataLoader(val_ds, batch_size=batch_size,shuffle=False)
 
-    del train_x,val_x,test_x
+    del train_x,val_x
 
     model_name = loaderdict['model_name']
     modeltype = load_class(model_name)
@@ -294,12 +296,13 @@ def objective(trial,loaderdict,device):
     datadict["train_losses"] = []
     datadict["val_epochs"] = []
 
+    
     for epoch in range(max_epochs):
         if type(loaderdict['loss_name']) is tuple:
-            loss_name = loss_names[(epoch+1)%2]
-            loss_function = loss_functions[(epoch+1)%2]
+            loss_name = loss_names[(epoch+1)%len(loaderdict['loss_name'])]
+            loss_function = loss_functions[(epoch+1)%len(loaderdict['loss_name'])]
         if type(train_ds) is tuple:
-            train_loader = train_loaders[(epoch+1)%2]
+            train_loader = train_loaders[(epoch+1)%len(train_ds)]
         print("-" * 10)
         print(f"epoch {epoch + 1}/{max_epochs}")
         try:
@@ -427,14 +430,15 @@ def test(folder_name,parent_dir,device):
     exp_name = loaderdict['exp_name']
 
     train_x,val_x,test_x,loader = loadData(exp_name)
+    del train_x,val_x
 
     batch_size = loaderdict['batch_size']
     if type(test_x) is tuple:
         test_x = test_x[0]
     test_ds = loader(test_x)
-    test_loader = DataLoader(test_ds, batch_size=batch_size,shuffle=True) 
+    test_loader = DataLoader(test_ds, batch_size=batch_size,shuffle=False) 
 
-    del train_x,val_x,test_x
+    del test_x
 
     model_name = loaderdict['model_name']
     modeltype = load_class(model_name)
