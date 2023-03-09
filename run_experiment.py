@@ -280,7 +280,7 @@ def objective(trial,loaderdict,device):
     learnerdict = loaderdict['learnerdict']
     
     optimizer = torch.optim.Adam(model.parameters(),**optimizerdict)
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,**learnerdict)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer,**learnerdict)
 
     max_epochs = loaderdict['max_epochs']
 
@@ -289,15 +289,17 @@ def objective(trial,loaderdict,device):
     save_json(loaderdict,dir_name/folder_name,'experiment_info',gz=False)
     #now should have everything :D
     best_metric=None
-    val_interval = 10
+    best_metric_epoch=0
+    val_interval = 100
 
     datadict = dict()
     datadict["val_losses"] = []
     datadict["train_losses"] = []
     datadict["val_epochs"] = []
+    datadict["learning_rates"] = []
 
-    
     for epoch in range(max_epochs):
+        datadict["learning_rates"].append(scheduler.get_last_lr())
         if type(loaderdict['loss_name']) is tuple:
             loss_name = loss_names[(epoch+1)%len(loaderdict['loss_name'])]
             loss_function = loss_functions[(epoch+1)%len(loaderdict['loss_name'])]
@@ -358,8 +360,6 @@ def objective(trial,loaderdict,device):
                         plt.close(fig)
                         #plt.show()
                     plotims([0,2,22,30])'''
-                
-                scheduler.step()
 
                 print(
                     f"current epoch: {epoch + 1}",
@@ -373,7 +373,7 @@ def objective(trial,loaderdict,device):
                     f"\nimg-wise DICE quantiles:{ statdict['imgdice_thresholds']}",
                     #f"\nf1-score mean: {statdict['mean_f1_scores']:.4f}, std: {statdict['std_f1_scores']:.4f}",
                     #f"\nrecall mean: {statdict['mean_recall']:.4f}, std: {statdict['std_recall']:.4f}",
-                    f"\nbest {loss_name} loss mean: {best_metric:.4f} at epoch: {best_metric_epoch}"
+                    f"\nbest {loss_name} loss mean: {best_metric if best_metric != None else 0 :.4f} at epoch: {best_metric_epoch}"
                 )
                 trial.report(avg_reconstruction_err, epoch)
                 # Handle pruning based on the intermediate value.
@@ -381,6 +381,7 @@ def objective(trial,loaderdict,device):
                     storeResults(model,dir_name/folder_name,best_metric,best_metric_epoch,datadict,epoch,loss_name)
                     del datadict,optimizer,loss_function,score_function, statdict
                     raise optuna.exceptions.TrialPruned()
+        scheduler.step()
     #Run completes all the way
     storeResults(model,dir_name/folder_name,best_metric,best_metric_epoch,datadict,epoch,loss_name)
     del datadict,optimizer,loss_function,score_function, statdict
@@ -392,6 +393,18 @@ def storeResults(model,folder,best_metric,best_metric_epoch,datadict,epoch,loss_
     print("Storing Results...")
     dat_name = "trainRunDat"
     save_json(datadict,folder,dat_name)
+
+    #LR
+    lr_name = f'Learning Rate'
+    fig = plt.figure()
+    eplen = range(1,epoch+2)
+    plt.plot(eplen,datadict["learning_rates"], color='purple', lw=2)
+    plt.xlabel('Epochs')
+    plt.ylabel(f'{loss_name}')
+    plt.title(f'Learning Rate')
+    #plt.show()
+    save_fig(fig,folder,lr_name)
+    plt.close(fig)
 
     #train
     train_name = f'trainRecErr'
@@ -405,10 +418,21 @@ def storeResults(model,folder,best_metric,best_metric_epoch,datadict,epoch,loss_
     save_fig(fig,folder,train_name)
     plt.close(fig)
 
+    
+    #LR
+    lr_loss_name = f'Loss vs Learning Rate'
+    fig = plt.figure()
+    plt.plot(datadict["learning_rates"],datadict["train_losses"], color='blue', lw=2)
+    plt.xlabel('Learning Rate')
+    plt.ylabel(f'Avg Train Loss Error ({loss_name})')
+    plt.title(f'Loss vs Learning Rate')
+    #plt.show()
+    save_fig(fig,folder,lr_loss_name)
+    plt.close(fig)
+
     #val
     val_name = f'valRecErr'
     fig = plt.figure()
-    eplen = range(1,epoch+2)
     plt.plot(datadict["val_epochs"],datadict["val_losses"], color='darkorange', lw=2)
     plt.xlabel('Epochs')
     plt.ylabel(f'{loss_name}')
@@ -417,7 +441,7 @@ def storeResults(model,folder,best_metric,best_metric_epoch,datadict,epoch,loss_
     save_fig(fig,folder,val_name)
     plt.close(fig)
 
-    print(f"train completed, best_metric: {best_metric:.4f} "f"at epoch: {best_metric_epoch}")
+    print(f"train completed, best_metric: {best_metric if best_metric != None else 0 :.4f} "f"at epoch: {best_metric_epoch}")
     modelsavedloc = folder / "model.pth"
     torch.save(model.state_dict(), modelsavedloc)
     print(f"Saved model at {modelsavedloc}.")
