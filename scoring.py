@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 import torch.nn as nn
 import math
-import SimpleITK as sitk
+#import SimpleITK as sitk
 from utils import *
 import scipy.spatial
 import os

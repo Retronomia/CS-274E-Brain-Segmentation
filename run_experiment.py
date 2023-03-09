@@ -58,15 +58,21 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
         #f1_scores = torch.tensor([], dtype=torch.float32, device=device)
         batchnum = 0
         for data, ground_truths in tqdm(loader, desc="Predictions and Scoring"):
+
             batchnum+=1
             val_images = data.to(device)
             truths = ground_truths.to(device)
+            
             temp_pred,loss = predict_vals(model,val_images,truths,loss_function,chosen_loss,device)
 
+
             y_stat = score_function(temp_pred,val_images) #.cpu().numpy()
+
+
             #y_mask = np.array([i.numpy() for i in decollate_batch(truths.cpu(), detach=False)])
 
             diff_auc,diff_auprc,diceScore,diceThreshold,dscores,qthresh = metrics(y_stat,truths,mtype,filepath,epoch)
+
 
             loss_values = torch.cat([loss_values, torch.tensor([loss],device=device)], dim=0)
             diff_aucs = torch.cat([diff_aucs, torch.tensor([diff_auc],device=device)], dim=0)
@@ -76,19 +82,34 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
             imgdScores = torch.cat([imgdScores, torch.tensor([dscores],device=device)], dim=0)
             #recalls = torch.cat([recalls, torch.tensor([recall],device=device)], dim=0)
             #f1_scores = torch.cat([f1_scores, torch.tensor([f1_score],device=device)], dim=0)
+
             if len(imgdThresholds) == 0:
                 imgdThresholds =  torch.tensor(qthresh,device=device) #torch.cat([imgdThresholds, torch.tensor([qthresh],device=device)], dim=0)
+
+
             if not madeexc:
                 def plotims(num):
                     fig = plt.figure(figsize=(20,5))
 
                     #bscore = torch.max(dscores)
+
                     bscoreidx = torch.argmax(torch.Tensor(dscores))
+    
+
                     bquant = qthresh[bscoreidx]
+
                     quants = torch.quantile(y_stat,bquant,dim=0)
+
+
+
                     threshplot = (y_stat[num][0] > quants)
-                    mask = torch.where(truths[num][0]==2)
+
+                    mask = torch.where(truths[num][0]==2,True,False).unsqueeze(0)
+
+                    #if not all(len(x) == 0 for x in mask):
                     threshplot[mask]=0
+
+
                     ax1 = fig.add_subplot(2,3,1)
                     ax1.imshow(threshplot[0].cpu(),vmin=0, vmax=1)
                     ax1.grid(False)
@@ -96,13 +117,15 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
                     ax1.set_yticks([])
                     ax1.set_title(f"Thresholded L1 Image (Q={bquant})",size=20)
 
-
                     ax1 = fig.add_subplot(2,3,2)
-                    threshplot = y_stat[num][0].clone()
+                    threshplot = y_stat[num][0].clone().unsqueeze(0)
+
                     threshplot[threshplot < diceThreshold] = 0
                     threshplot[threshplot >= diceThreshold] = 1
-                    threshplot[mask]==0
-                    ax1.imshow(threshplot.cpu(),vmin=0, vmax=1)
+
+
+                    threshplot[mask]=0
+                    ax1.imshow(threshplot[0].cpu(),vmin=0, vmax=1)
                     ax1.grid(False)
                     ax1.set_xticks([])
                     ax1.set_yticks([])
@@ -130,9 +153,9 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
                     ax3.set_title("Original Image", size=20)
 
                     ax4 = fig.add_subplot(2,3,6)
-                    truthplt = truths[num][0].clone()
+                    truthplt = truths[num][0].clone().unsqueeze(0)
                     truthplt[mask] = 0
-                    ax4.imshow(truthplt.cpu(), cmap="gray", vmin=0, vmax=1)
+                    ax4.imshow(truthplt[0].cpu(), cmap="gray", vmin=0, vmax=1)
                     ax4.grid(False)
                     ax4.set_xticks([])
                     ax4.set_yticks([])
@@ -148,7 +171,6 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
                         print("WARNING:",str(e))
                         pass
                 madeexc = True
-            
 
         statdict = dict()
         #statdict['losses'] = loss_values.cpu().detach().numpy()
@@ -290,7 +312,7 @@ def objective(trial,loaderdict,device):
     #now should have everything :D
     best_metric=None
     best_metric_epoch=0
-    val_interval = 100
+    val_interval = 1
 
     datadict = dict()
     datadict["val_losses"] = []
@@ -379,12 +401,12 @@ def objective(trial,loaderdict,device):
                 # Handle pruning based on the intermediate value.
                 if trial.should_prune():
                     storeResults(model,dir_name/folder_name,best_metric,best_metric_epoch,datadict,epoch,loss_name)
-                    del datadict,optimizer,loss_function,score_function, statdict
+                    del datadict,optimizer,loss_function,score_function,statdict
                     raise optuna.exceptions.TrialPruned()
         scheduler.step()
     #Run completes all the way
     storeResults(model,dir_name/folder_name,best_metric,best_metric_epoch,datadict,epoch,loss_name)
-    del datadict,optimizer,loss_function,score_function, statdict
+    del datadict,optimizer,loss_function,score_function
     return best_metric
     
 
@@ -452,6 +474,7 @@ def test(folder_name,parent_dir,device):
 
     loaderdict = read_json(parent_dir/folder_name/'experiment_info.json',gz=False)
     exp_name = loaderdict['exp_name']
+
 
     train_x,val_x,test_x,loader = loadData(exp_name)
     del train_x,val_x
