@@ -208,6 +208,7 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
 
         return statdict
 
+
 def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
     '''Run through one epoch of training dataset on model'''
     model.train()
@@ -221,6 +222,9 @@ def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
         truths = ground_truths.to(device)
         mu,sigma,z,z_rec = None,None,None,None
 
+        modtruths = truths.clone()
+        modtruths[modtruths==2]=0
+
         optimizer.zero_grad()
         try:
             if loss_name == "KL_Loss":
@@ -228,16 +232,16 @@ def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
                 loss = loss_function(outputs,inputs,mu,sigma)
             elif loss_name == "KL_SP_Loss":
                 outputs,mu,sigma = model(inputs)
-                loss = loss_function(outputs,inputs,truths,mu,sigma)
+                loss = loss_function(outputs,inputs,modtruths,mu,sigma)
             elif loss_name == "Custom_Loss":
                 outputs = model(inputs)
-                loss = loss_function(outputs,inputs,truths)
+                loss = loss_function(outputs,inputs,modtruths)
             elif loss_name=="CAE_Loss":
                 outputs,z,z_rec  = model(inputs)
                 loss = loss_function(outputs,inputs,z,z_rec)
             elif loss_name=="CAE_SP_Loss":
                 outputs,z,z_rec  = model(inputs)
-                loss = loss_function(outputs,inputs,truths,z,z_rec)
+                loss = loss_function(outputs,inputs,modtruths,z,z_rec)
             else:
                 outputs = model(inputs.float()) #FIX
                 loss = loss_function(outputs, inputs)
@@ -251,7 +255,7 @@ def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
         epoch_loss += loss.item()
         #print(f"{step}/{num_steps}, "f"train_loss: {loss.item():.4f}")
         
-        del inputs,outputs,truths,mu,sigma,loss,z,z_rec
+        del inputs,outputs,truths,mu,sigma,loss,z,z_rec,modtruths
 
     epoch_loss /= step
     del step
