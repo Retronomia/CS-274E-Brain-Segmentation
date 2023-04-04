@@ -61,8 +61,8 @@ def Custom_Loss():
             anom = anomaly_score(pred,real)
             #anom_mod = anom.clone()
             #anom_mod[anom_mod==0]=1e-6
-            skew_anom = 3
-            skew_norm = .75
+            skew_anom = 1
+            skew_norm = 1
             #skew_norm*(1 - mask)*anom + skew_anom*mask/anom_mod #original loss
             #return (skew_norm*(1 - mask)*torch.exp((2*anom))) + (skew_anom*mask/(anom+1e-6))-1 #loss I tried that one time
 
