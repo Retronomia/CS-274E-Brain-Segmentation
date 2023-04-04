@@ -9,6 +9,7 @@ from optuna.trial import TrialState
 import argparse
 import pickle
 import string
+import datetime
 folder_name = ""
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -75,17 +76,20 @@ if __name__=="__main__":
     parser.add_argument('--model_name', type=str, default='AutoEnc', help='model name')
     parser.add_argument('--loss_name', type=str, default='L1_Loss', help='loss name')
     parser.add_argument('--tqdm',action='store_true',help='use tqdm')
+    parser.add_argument('--comment',type=str,default='None',help='reminder print out for logs')
     args = parser.parse_args()
     args_model_name = args.model_name
     args_exp_name = args.exp_name
     args_loss_name = args.loss_name
     args_use_tqdm = args.tqdm
+    print("Comment:",args.comment)
 
     study_name = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
  
     vae_study = optuna.create_study(direction="minimize",study_name=study_name)
 
-    vae_study.optimize(loadobjective, n_trials=1,timeout=60*60*4,gc_after_trial=True,show_progress_bar=False)
+    start = time.time()
+    vae_study.optimize(loadobjective, n_trials=1,timeout=60*60*24,gc_after_trial=True,show_progress_bar=False)
 
     pruned_trials = vae_study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = vae_study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
@@ -111,3 +115,5 @@ if __name__=="__main__":
     best_folder = study_name + '-' + str(trial.number)+"-"+args_exp_name+"-"+args_model_name+'-'+args_loss_name
     #folder_name = "0-wmh_usp-AutoEnc-L1_Loss-2023-02-21 08-53-14"
     test(best_folder,'experiments',device)
+    end = time.time()
+    print("Time to complete:",datetime.timedelta(seconds=end-start))

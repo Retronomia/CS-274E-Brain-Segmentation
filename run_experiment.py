@@ -208,7 +208,6 @@ def score(model,loader,loss_function,chosen_loss,score_function,filepath,epoch,m
 
         return statdict
 
-
 def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
     '''Run through one epoch of training dataset on model'''
     model.train()

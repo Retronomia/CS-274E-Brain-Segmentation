@@ -6,6 +6,11 @@ def load_loss(loss_name):
     '''Returns loss func from this file'''
     return globals()[loss_name]
 
+
+
+
+
+
 def L1_Loss():
     return nn.L1Loss()#(prediction,true)
 def L2_Loss(prediction,true):
