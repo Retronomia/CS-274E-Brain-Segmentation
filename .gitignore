@@ -11,6 +11,7 @@ neurips_2020.sty
 *.gz
 *.pyc
 *.npy
+*.log
 experiments/
 __pycache__/
 files/MNIST/

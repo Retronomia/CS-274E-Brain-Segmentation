@@ -36,8 +36,8 @@ def loadobjective(trial):
     
     encoderdict = dict()
     encoderdict['num_layers'] = 5 #4 #5
-    encoderdict['kernel_size'] = [1,2,3,4,5]  #[1,2,3,4] #[1,2,3,4,5] 
-    encoderdict['stride'] = [1,2,1,1,1]  #[1,2,1,1] #[1,2,1,1,1] 
+    encoderdict['kernel_size'] = [1,2,3,4,5]   #[1,2,3,4] #[1,2,3,4,5] 
+    encoderdict['stride'] = [1,2,1,1,1]   #[1,2,1,1] #[1,2,1,1,1] 
     encoderdict['padding'] = [1,2,2,2,2]  #[1,2,2,2] #[1,2,2,2,2] 
     encoderdict['dilation'] = [1,1,1,1,1]  #[1,1,1,1] #[1,1,1,1,1] 
     encoderdict['latent'] = 128 
@@ -62,6 +62,7 @@ def loadobjective(trial):
 
 
     #time_stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.gmtime())
+    print("Loaderdict:",loaderdict)
     folder_name=study_name + '-' + str(loaderdict['trial_num'])+"-"+exp_name+"-"+model_name+'-'+loss_name #+'-'+time_stamp
     loaderdict['folder_name']=folder_name
 

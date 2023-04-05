@@ -2,6 +2,7 @@ from utils import *
 import tempfile
 from monai.apps import download_and_extract
 import h5py
+from pathlib import Path
 import matplotlib.pyplot as plt
 import PIL
 from monai.transforms.utils import rescale_array
@@ -10,6 +11,7 @@ from PIL import Image as im
 import seaborn as sns
 from scipy.ndimage import rotate, affine_transform
 from tqdm import tqdm
+import torchvision
 import itertools
 def downloadMedNIST(root_dir):
     '''Downloads MedNIST dataset. Code from MedNIST tutorial.'''
@@ -311,21 +313,43 @@ class WMHDataset(torch.utils.data.Dataset):
     '''Used to load data in DataLoader'''
     def __init__(self, image_files):
         self.image_files = image_files
+        self.sprite_imgs = loadDSprites()
+        self.sprite_len = len(self.sprite_imgs)
+        self.intensity_list = np.random.uniform(low=.2,high=.8,size=self.sprite_len)
+        self.hasprinted = True
 
     def __len__(self):
         return len(self.image_files)
 
     def __getitem__(self, index):
+        curr_dir = Path(os.getcwd())
         if type(index)==int:
-            dat = read_np(self.image_files[index])
+            dat = read_np(curr_dir / self.image_files[index].replace("\\","/"))
             flair = dat[0].astype(np.float32)
             mask = dat[1].astype(np.float32)
         else:
             print("WARNING: slicing the dataloader can lead to large memory allocation.")
             r = range(self.__len__())
-            dat = np.asarray([read_np(self.image_files[i]) for i in r[index]])
+            dat = np.asarray([read_np(curr_dir / self.image_files[i].replace("\\","/")) for i in r[index]])
             flair = dat[index,0].astype(np.float32)
             mask = dat[index,1].astype(np.float32)
+        #
+        tempmask = self.sprite_imgs[index]
+        if self.hasprinted:
+            print(tempmask.shape)
+        tempmask = torch.nn.functional.pad(torch.from_numpy(tempmask),(88,88,88,88))
+        if self.hasprinted:
+            print(tempmask.shape)
+        tempmask = torch.unsqueeze(tempmask,axis=0)
+        tempmask = tempmask.cpu().detach().numpy()
+        flair[tempmask.astype(bool)] = self.intensity_list[index]
+        mask[tempmask.astype(bool)] = 1
+        self.hasprinted = False
+
+
+        #resizer = torchvision.transforms.Resize((64,64))
+        #flair = resizer(torch.from_numpy(flair))
+        #mask = resizer(torch.from_numpy(mask))
         return flair,mask
 
 

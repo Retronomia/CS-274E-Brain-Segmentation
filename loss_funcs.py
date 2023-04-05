@@ -67,6 +67,10 @@ def Custom_Loss():
             #return (skew_norm*(1 - mask)*torch.exp((2*anom))) + (skew_anom*mask/(anom+1e-6))-1 #loss I tried that one time
 
             #symmetrical loss
+            #((skew_norm*-1*(1 - mask))/(anom-1+1e-6)) + (skew_anom*mask/(anom+1e-6))-(skew_norm*(1-mask))-(skew_anom*mask)
+            #mask * (-1 * anom + 1) + (1-mask) * anom
+            # ((skew_norm*-1*(1 - mask))/(anom-1+1e-6)) + (skew_anom*mask/(anom+1e-6))-(skew_norm*(1-mask))-(skew_anom*mask)
+            # mask * (-1 * anom + 1) + (1-mask) * anom
             return ((skew_norm*-1*(1 - mask))/(anom-1+1e-6)) + (skew_anom*mask/(anom+1e-6))-(skew_norm*(1-mask))-(skew_anom*mask)
         res = formula(pred,real,mask)
         if reduction=='mean':
