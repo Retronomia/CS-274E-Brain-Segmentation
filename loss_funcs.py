@@ -71,7 +71,7 @@ def Custom_Loss():
             #mask * (-1 * anom + 1) + (1-mask) * anom
             # ((skew_norm*-1*(1 - mask))/(anom-1+1e-6)) + (skew_anom*mask/(anom+1e-6))-(skew_norm*(1-mask))-(skew_anom*mask)
             # mask * (-1 * anom + 1) + (1-mask) * anom
-            return ((skew_norm*-1*(1 - mask))/(anom-1+1e-6)) + (skew_anom*mask/(anom+1e-6))-(skew_norm*(1-mask))-(skew_anom*mask)
+            return mask * (-1 * anom + 1) + (1-mask) * anom
         res = formula(pred,real,mask)
         if reduction=='mean':
             #mask = torch.logical_or(mask ==0,mask==1)
