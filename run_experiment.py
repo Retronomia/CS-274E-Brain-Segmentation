@@ -20,14 +20,19 @@ def predict_vals(model,data,ground_truths,loss_function,chosen_loss,device):
     temp_mu,temp_sigma,temp_z,temp_z_rec = None,None,None,None
     val_images = data.to(device)
     truths = ground_truths.to(device)
-    if chosen_loss=="KL_Loss" or chosen_loss=="KL_SP_Loss":
+    if chosen_loss == "VQ_Model_Loss":
+        loss,temp_pred,_ = model(val_images)
+    elif chosen_loss=="KL_Loss" or chosen_loss=="KL_SP_Loss":
         temp_pred,temp_mu,temp_sigma = model(val_images)
     elif chosen_loss=="CAE_Loss" or chosen_loss == "CAE_SP_Loss":
         temp_pred,temp_z,temp_z_rec = model(val_images)
     else:
         temp_pred = model(val_images.float())
 
-    if chosen_loss == "Custom_Loss":
+    if chosen_loss=="VQ_Model_Loss":
+        recon_loss = loss_function(temp_pred,val_images)
+        loss = loss + recon_loss
+    elif chosen_loss == "Custom_Loss":
         loss = loss_function(temp_pred,val_images,truths)
     elif chosen_loss == "KL_Loss":
         loss = loss_function(temp_pred,val_images,temp_mu,temp_sigma)
@@ -226,7 +231,11 @@ def train(model,train_loader,optimizer,loss_function,loss_name,device,use_tqdm):
 
         optimizer.zero_grad()
         try:
-            if loss_name == "KL_Loss":
+            if loss_name == "VQ_Model_Loss":
+                loss,outputs,_ = model(inputs)
+                recon_loss = loss_function(outputs,inputs)
+                loss = loss + recon_loss
+            elif loss_name == "KL_Loss":
                 outputs,mu,sigma = model(inputs)
                 loss = loss_function(outputs,inputs,mu,sigma)
             elif loss_name == "KL_SP_Loss":
@@ -320,7 +329,7 @@ def objective(trial,loaderdict,device):
     #now should have everything :D
     best_metric=None
     best_metric_epoch=0
-    val_interval = 100
+    val_interval = 10
 
     datadict = dict()
     datadict["val_losses"] = []

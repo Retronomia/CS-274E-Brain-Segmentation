@@ -130,3 +130,10 @@ def CAE_SP_Loss():
         else:
             return res
     return caeloss
+
+
+def VQ_Model_Loss():
+    return L1_Loss()
+
+def VQ_Model_SP_Loss():
+    return Custom_Loss()
