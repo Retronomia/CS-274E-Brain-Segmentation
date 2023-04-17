@@ -109,7 +109,6 @@ def read_json(path,gz=True):
 
 def save_np(data,folder,file_name: str,gz=True):
     '''saves np to file'''
-
     if gz:
         save_path = ensure_suffix(folder / file_name,'.gz')
     else:

@@ -62,7 +62,6 @@ def loadobjective(trial):
 
 
     #time_stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.gmtime())
-    print("Loaderdict:",loaderdict)
     folder_name=study_name + '-' + str(loaderdict['trial_num'])+"-"+exp_name+"-"+model_name+'-'+loss_name #+'-'+time_stamp
     loaderdict['folder_name']=folder_name
 
