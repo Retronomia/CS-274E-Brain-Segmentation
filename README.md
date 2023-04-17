@@ -10,9 +10,13 @@ See requirements.txt for required libraries and versions.
 ## Instructions
 
 ### Datasets
+
+Place data into data_folder:
 - MedNIST (https://github.com/Project-MONAI/tutorials/blob/main/2d_classification/mednist_tutorial.ipynb)
 - WMH Challenge (https://wmh.isi.uu.nl/data/)
     - modified using (https://github.com/FeliMe/brain_sas_baseline)
+
+This stays as dsprites-dataset-master and is already in the repo:
 - Dsprites (https://github.com/deepmind/dsprites-dataset)
 ### experiment.py Arguments
 
@@ -75,3 +79,7 @@ Then the new argument option is simply the name of the function.
 ### Running models
 
 To run the code, run experiment.py with the desired arguments.
+
+Experiments can be found in the experiments folder.
+
+To open an experiment's .gz file, refer to open_gz.py.

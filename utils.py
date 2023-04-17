@@ -13,6 +13,7 @@ import importlib
 
 
 def capitalize(s):
+    '''Capitalize first letter of string'''
     return s[:1].upper() + s[1:]
 
 
@@ -73,6 +74,7 @@ def json_reformatter(obj):
 
 
 def ensure_suffix(path, suffix):
+    '''Ensures path has suffix, if not, adds it.'''
     if Path(path).suffix == suffix:
         return path
     else:
@@ -102,6 +104,7 @@ def save_json(data, folder, file_name: str, gz=True):
 
 
 def read_json(path, gz=True):
+    '''reads json from file'''
     if gz:
         path = ensure_suffix(path, '.gz')
         with gzip.open(path, 'rt', encoding='utf-8') as fp:
@@ -133,13 +136,12 @@ def save_np(data, folder, file_name: str, gz=True):
 
 
 def read_np(path, gz=True):
+    '''reads np from file'''
     if gz:
         path = ensure_suffix(path, '.gz')
         f = gzip.GzipFile(path, 'r')
         data = np.load(f)
         f.close()
-        # with gzip.open(path, 'rt', encoding='utf-8') as fp:
-        #    data = np.load(fp)
     else:
         path = ensure_suffix(path, '.npy')
         with open(path, 'rb', encoding='utf-8') as fp:
@@ -155,9 +157,11 @@ def save_fig(fig, folder, file_name, suffix='.jpg'):
 
 
 def all_files_exist(files):
+    '''checks if all files exist. Returns True if all exist, False otherwise.'''
     return all([os.path.exists(f) for f in files])
 
 
 def ensure_folder_exists(folder):
+    '''creates folder if it doesn't exist.'''
     if not os.path.exists(folder):
         os.makedirs(folder)

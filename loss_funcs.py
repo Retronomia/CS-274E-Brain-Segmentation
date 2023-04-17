@@ -39,13 +39,14 @@ def KL_SP_Loss():
     def maskloss(pred, real, mask, reduction='mean'):
         def formula(pred, real, mask):
             anom = anomaly_score(pred, real)
-            anom_mod = anom.clone()
-            anom_mod[anom_mod == 0] = 1e-6
-            return (1 - mask)*anom + mask/anom_mod
+            #anom_mod = anom.clone()
+            #anom_mod[anom_mod == 0] = 1e-6
+            # return (1 - mask)*anom + mask/anom_mod
+            return mask * (-1 * anom + 1) + (1-mask) * anom
         res = formula(pred, real, mask)
         if reduction == 'mean':
-            mask = torch.logical_or(mask == 0, mask == 1)
-            res = res[mask]
+            #mask = torch.logical_or(mask == 0, mask == 1)
+            #res = res[mask]
             return torch.mean(res)
         else:
             return res
@@ -72,8 +73,8 @@ def Custom_Loss():
             anom = anomaly_score(pred, real)
             #anom_mod = anom.clone()
             # anom_mod[anom_mod==0]=1e-6
-            skew_anom = 1
-            skew_norm = 1
+            #skew_anom = 1
+            #skew_norm = 1
             # skew_norm*(1 - mask)*anom + skew_anom*mask/anom_mod #original loss
             # return (skew_norm*(1 - mask)*torch.exp((2*anom))) + (skew_anom*mask/(anom+1e-6))-1 #loss I tried that one time
 
@@ -118,17 +119,18 @@ def CAE_SP_Loss():
     def maskloss(pred, real, mask, reduction='mean'):
         def formula(pred, real, mask):
             anom = anomaly_score(pred, real)
-            anom_mod = anom.clone()
-            anom_mod[anom_mod == 0] = 1e-6
-            return (1 - mask)*anom + mask/anom_mod
+            #anom_mod = anom.clone()
+            #anom_mod[anom_mod == 0] = 1e-6
+            # return (1 - mask)*anom + mask/anom_mod
+            return mask * (-1 * anom + 1) + (1-mask) * anom
         res = formula(pred, real, mask)
         if reduction == 'mean':
-            mask = torch.where(mask == 2)
-            res[mask] = 0
+            #mask = torch.where(mask == 2)
+            #res[mask] = 0
             return torch.mean(res)
         else:
-            mask = torch.where(mask == 2)
-            res[mask] = 0
+            #mask = torch.where(mask == 2)
+            #res[mask] = 0
             return res
 
     def caeloss(pred, real, mask, z, z_rec, reduction='mean'):
