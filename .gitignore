@@ -1,5 +1,6 @@
 neurips_2020.sty
 *.txt
+!requirements.txt
 *.png
 *.jpg
 *.jpeg
@@ -12,6 +13,7 @@ neurips_2020.sty
 *.pyc
 *.npy
 *.log
+*.sh
 experiments/
 __pycache__/
 files/MNIST/

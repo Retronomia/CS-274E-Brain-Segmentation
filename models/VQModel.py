@@ -1,3 +1,6 @@
+#Modified from
+#https://github.com/zalandoresearch/pytorch-vq-vae/blob/master/vq-vae.ipynb
+
 from models.helper_funcs.modelhelper import *
 import torch.nn.functional as F
 class VectorQuantizer(nn.Module):
@@ -145,9 +148,6 @@ class VQModel(nn.Module):
     def __init__(self,num_layers,kernel_size,stride,padding,dilation,latent=128,image_shape=64,inp_size=1):
         #num_hiddens, num_residual_layers, num_residual_hiddens, num_embeddings, embedding_dim, commitment_cost, decay=0
         super(VQModel, self).__init__()
-        batch_size = 256
-        num_training_updates = 15000
-
         num_hiddens = 128
         num_residual_hiddens = 32
         num_residual_layers = 2
