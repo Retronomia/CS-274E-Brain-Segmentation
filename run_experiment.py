@@ -386,42 +386,7 @@ def objective(trial, loaderdict, device):
                 if best_metric == None or avg_reconstruction_err < best_metric:
                     best_metric = avg_reconstruction_err
                     best_metric_epoch = epoch + 1
-
-                '''if (epoch+1) % 1 == 0:
-                    def plotims(nums):
-                        fig = plt.figure(figsize=(10,10))
-                        plt.set_cmap('gray')
-                        plt.rc('font', size=8)
-                        def subp(n,num,maxr):
-                            ax1 = fig.add_subplot(maxr,3,3*(n-1)+1)
-                            ax1.imshow(y_stat[num][0], vmin=0, vmax=1)
-                            ax1.grid(False)
-                            ax1.set_xticks([])
-                            ax1.set_yticks([])
-                            ax1.set_title(f"Score Image({num})")
-                            ax2 = fig.add_subplot(maxr,3,3*(n-1)+2)
-                            ax2.imshow(y_pred_np[num][0], cmap="gray", vmin=0, vmax=1)
-                            ax2.grid(False)
-                            ax2.set_xticks([])
-                            ax2.set_yticks([])
-                            ax2.set_title(f"Reconstructed Image({num})")
-                            
-                            ax3 = fig.add_subplot(maxr,3,3*(n-1)+3)
-                            ax3.imshow(y_true_np[num][0], cmap="gray", vmin=0, vmax=1)
-                            ax3.set_xticks([])
-                            ax3.set_yticks([])
-                            ax3.grid(False)
-                            ax3.set_title(f"Original Image({num})")
-                        row = 1
-                        maxr = len(nums)
-                        for num in nums:
-                            subp(row,num,maxr)
-                            row+=1
-                        save_fig(fig,dir_name/folder_name,f'training_{epoch+1}',suffix='.jpg')
-                        plt.close(fig)
-                        #plt.show()
-                    plotims([0,2,22,30])'''
-
+                    
                 print(
                     f"current epoch: {epoch + 1}",
                     f"\ncurrent {loss_name} loss mean: {avg_reconstruction_err:.4f}",
@@ -561,55 +526,6 @@ def test(folder_name, parent_dir, device):
 
         avg_reconstruction_err = np.mean(statdict['mean_losses'])
 
-        '''epochnum = 0
-        prevnum = 1
-        while os.path.exists(parent_dir/folder_name/f"dicePC_{prevnum}.gz"):
-            epochnum+=1
-            prevnum+=1
-        tempjson = read_json(parent_dir/folder_name/f"dicePC_{epochnum}.gz",gz=True)
-        threshold = tempjson['best_threshold']
-
-        def plotims(num):
-            fig = plt.figure(figsize=(20,5))
-            ax1 = fig.add_subplot(1,4,1)
-
-            threshplot = y_stat[num][0].copy()
-            threshplot[threshplot < threshold] = 0
-            ax1.imshow(threshplot,vmin=0, vmax=1)
-            ax1.grid(False)
-            ax1.set_xticks([])
-            ax1.set_yticks([])
-            ax1.set_title(f"Thresholded L1 Image ({threshold})", size=20)
-
-            ax1 = fig.add_subplot(1,4,2)
-            ax1.imshow(y_stat[num][0],vmin=0, vmax=1)
-            ax1.grid(False)
-            ax1.set_xticks([])
-            ax1.set_yticks([])
-            ax1.set_title("L1 Image",size=20)
-            
-            ax2 = fig.add_subplot(1,4,3)
-            ax2.imshow(y_pred_np[num][0], cmap="gray", vmin=0, vmax=1)
-            ax2.grid(False)
-            ax2.set_xticks([])
-            ax2.set_yticks([])
-            ax2.set_title("Reconstructed Image", size=20)
-            
-            ax3 = fig.add_subplot(1,4,4)
-            ax3.imshow(y_true_np[num][0], cmap="gray", vmin=0, vmax=1)
-            ax3.grid(False)
-            ax3.set_xticks([])
-            ax3.set_yticks([])
-            ax3.set_title("Original Image", size=20)
-            #plt.show()
-            save_fig(fig,parent_dir/folder_name,f'testimgs_{num}',suffix='.jpg')
-            plt.close(fig)
-        for plotnum in [125,19,26,234,49,670,69,71,78,82,83,89,92,93,132,504]:
-            try:
-                plotims(plotnum)
-            except:
-                pass
-        del y_true_np,y_pred_np'''
         #
         print(
             f"\n{loss_name} loss mean: {avg_reconstruction_err:.4f}",
