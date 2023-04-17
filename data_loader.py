@@ -7,11 +7,7 @@ import matplotlib.pyplot as plt
 import PIL
 from monai.transforms.utils import rescale_array
 import nibabel as nib
-from PIL import Image as im
-import seaborn as sns
-from scipy.ndimage import rotate, affine_transform
 from tqdm import tqdm
-import torchvision
 import itertools
 
 

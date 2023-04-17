@@ -4,15 +4,12 @@
 # https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py for demonstrating how to set up Optuna code
 # https://github.com/StefanDenn3r/Unsupervised_Anomaly_Detection_Brain_MRI for model inspiration/code for metric evaluation (Baur, et al. 2021)
 import torch
-import os
 from monai.data import decollate_batch, DataLoader
 from utils import *
 from loss_funcs import *
 import matplotlib.pyplot as plt
 from data_loader import loadData
-import time
 import optuna
-import scipy
 from scoring import metrics
 from tqdm import tqdm
 

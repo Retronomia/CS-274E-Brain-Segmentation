@@ -5,10 +5,8 @@ import torch.nn as nn
 import math
 #import SimpleITK as sitk
 from utils import *
-import scipy.spatial
-import os
 from scipy.stats import bootstrap
-from torchmetrics.functional import dice, average_precision, auroc, recall, f1_score
+from torchmetrics.functional import dice, average_precision, auroc
 
 
 def metrics(y_stat, y_mask, mtype, folder, epoch):
