@@ -57,9 +57,9 @@ def loadobjective(trial):
     loaderdict['optimizerdict'] = optimizerdict
     loaderdict['learnerdict'] = learnerdict
     loaderdict['encoderdict'] = encoderdict
-    val_interval = 2
+    val_interval = 2 #how often validation is run (occurs on epoch % val_interval == 0)
     loaderdict['val_interval'] = val_interval
-    max_epochs = 3
+    max_epochs = 3 #how many total epochs are run
     loaderdict['max_epochs'] = max_epochs
 
     #time_stamp = time.strftime("%Y-%m-%d %H-%M-%S", time.gmtime())
