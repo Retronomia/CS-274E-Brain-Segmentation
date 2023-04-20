@@ -1,4 +1,5 @@
 # MRI Segmentation with Autoencoders
+![Test(test)_1_1](https://user-images.githubusercontent.com/44329309/233330859-13b8d7e8-f552-46b4-8a63-18f09dadaa49.jpg)
 
 ## About this Project
 
