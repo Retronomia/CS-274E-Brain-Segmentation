@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 
 def predict_vals(model, data, ground_truths, loss_function, chosen_loss, device):
+    '''Predicts values for given data, model and returns loss and predictions.'''
     temp_mu, temp_sigma, temp_z, temp_z_rec = None, None, None, None
     val_images = data.to(device)
     truths = ground_truths.to(device)
@@ -54,6 +55,7 @@ def predict_vals(model, data, ground_truths, loss_function, chosen_loss, device)
 
 def score(model, loader, loss_function, chosen_loss, score_function, filepath, epoch, mtype, device, use_tqdm):
     '''get loss, reconstructions, masks, true image values'''
+    print(f"Scoring model...")
     model.eval()
     madeexc = False
     with torch.no_grad():
@@ -64,8 +66,6 @@ def score(model, loader, loss_function, chosen_loss, score_function, filepath, e
         diceThresholds = torch.tensor([], dtype=torch.float32, device=device)
         imgdScores = torch.tensor([], dtype=torch.float32, device=device)
         imgdThresholds = torch.tensor([], dtype=torch.float32, device=device)
-        #recalls = torch.tensor([], dtype=torch.float32, device=device)
-        #f1_scores = torch.tensor([], dtype=torch.float32, device=device)
         batchnum = 0
         for data, ground_truths in tqdm(loader, desc="Predictions and Scoring", disable=not use_tqdm):
 
@@ -77,8 +77,6 @@ def score(model, loader, loss_function, chosen_loss, score_function, filepath, e
                 model, val_images, truths, loss_function, chosen_loss, device)
 
             y_stat = score_function(temp_pred, val_images)  # .cpu().numpy()
-
-            #y_mask = np.array([i.numpy() for i in decollate_batch(truths.cpu(), detach=False)])
 
             diff_auc, diff_auprc, diceScore, diceThreshold, dscores, qthresh = metrics(
                 y_stat, truths, mtype, filepath, epoch)
@@ -95,18 +93,13 @@ def score(model, loader, loss_function, chosen_loss, score_function, filepath, e
                 [diceThresholds, torch.tensor([diceThreshold], device=device)], dim=0)
             imgdScores = torch.cat(
                 [imgdScores, torch.tensor([dscores], device=device)], dim=0)
-            #recalls = torch.cat([recalls, torch.tensor([recall],device=device)], dim=0)
-            #f1_scores = torch.cat([f1_scores, torch.tensor([f1_score],device=device)], dim=0)
 
             if len(imgdThresholds) == 0:
-                # torch.cat([imgdThresholds, torch.tensor([qthresh],device=device)], dim=0)
                 imgdThresholds = torch.tensor(qthresh, device=device)
 
             if not madeexc:
                 def plotims(num):
                     fig = plt.figure(figsize=(20, 5))
-
-                    #bscore = torch.max(dscores)
 
                     bscoreidx = torch.argmax(torch.Tensor(dscores))
 
@@ -119,7 +112,6 @@ def score(model, loader, loss_function, chosen_loss, score_function, filepath, e
                     mask = torch.where(
                         truths[num][0] == 2, True, False).unsqueeze(0)
 
-                    # if not all(len(x) == 0 for x in mask):
                     threshplot[mask] = 0
 
                     ax1 = fig.add_subplot(2, 3, 1)
@@ -189,38 +181,28 @@ def score(model, loader, loss_function, chosen_loss, score_function, filepath, e
                 madeexc = True
 
         statdict = dict()
-        #statdict['losses'] = loss_values.cpu().detach().numpy()
         statdict['mean_losses'] = torch.mean(loss_values).item()
         statdict['std_losses'] = torch.std(loss_values).item()
 
-        #statdict['auc'] = diff_aucs.cpu().detach().numpy()
         statdict['mean_auc'] = torch.mean(diff_aucs).item()
         statdict['std_auc'] = torch.std(diff_aucs).item()
 
-        #statdict['auprc'] = diff_auprcs.cpu().detach().numpy()
         statdict['mean_auprc'] = torch.mean(diff_auprcs).item()
         statdict['std_auprc'] = torch.std(diff_auprcs).item()
 
-        #statdict['dice_thresholds'] = diceThresholds.cpu().detach().numpy()
         statdict['mean_dice_thresholds'] = torch.mean(diceThresholds).item()
         statdict['std_dice_thresholds'] = torch.std(diceThresholds).item()
 
-        #statdict['dice_scores'] =  diceScores.cpu().detach().numpy()
         statdict['mean_dice_scores'] = torch.mean(diceScores).item()
         statdict['std_dice_scores'] = torch.std(diceScores).item()
+
         # imgdScores
-        #statdict['imgdice_scores'] = imgdScores.cpu().detach().numpy()
         statdict['mean_imgdice_scores'] = torch.mean(
             imgdScores, axis=0).cpu().detach().numpy()
         statdict['std_imgdice_scores'] = torch.std(
             imgdScores, axis=0).cpu().detach().numpy()
         statdict['imgdice_thresholds'] = imgdThresholds.cpu().detach().numpy()
 
-        #statdict['mean_recall'] = torch.mean(recalls).item()
-        #statdict['std_recall'] = torch.std(recalls).item()
-
-        #statdict['mean_f1_scores'] = torch.mean(f1_score).item()
-        #statdict['std_f1_scores'] = torch.std(f1_score).item()
         # imgdThresholds
         save_json(statdict, filepath, f'data_summary_{epoch}')
 
@@ -233,6 +215,7 @@ def train(model, train_loader, optimizer, loss_function, loss_name, device, use_
     epoch_loss = 0
     step = 0
     num_steps = len(train_loader)
+    print(f"Training model...")
     for batch_data, ground_truths in tqdm(train_loader, desc="Training", disable=not use_tqdm):
         step += 1
         inputs = batch_data.to(device)
@@ -289,6 +272,7 @@ def train(model, train_loader, optimizer, loss_function, loss_name, device, use_
 
 
 def objective(trial, loaderdict, device):
+    '''Objective function for Optuna hyperparameter optimization. Trains a model.'''
     exp_name = loaderdict['exp_name']
 
     train_x, val_x, test_x, loader = loadData(exp_name)
@@ -386,7 +370,7 @@ def objective(trial, loaderdict, device):
                 if best_metric == None or avg_reconstruction_err < best_metric:
                     best_metric = avg_reconstruction_err
                     best_metric_epoch = epoch + 1
-                    
+
                 print(
                     f"current epoch: {epoch + 1}",
                     f"\ncurrent {loss_name} loss mean: {avg_reconstruction_err:.4f}",
@@ -397,8 +381,6 @@ def objective(trial, loaderdict, device):
                     f"\nimg-wise DICE score means: {statdict['mean_imgdice_scores']}",
                     f"\nimg-wise DICE score stds: {statdict['std_imgdice_scores']}",
                     f"\nimg-wise DICE quantiles:{ statdict['imgdice_thresholds']}",
-                    #f"\nf1-score mean: {statdict['mean_f1_scores']:.4f}, std: {statdict['std_f1_scores']:.4f}",
-                    #f"\nrecall mean: {statdict['mean_recall']:.4f}, std: {statdict['std_recall']:.4f}",
                     f"\nbest {loss_name} loss mean: {best_metric if best_metric != None else 0 :.4f} at epoch: {best_metric_epoch}"
                 )
                 trial.report(avg_reconstruction_err, epoch)
@@ -478,6 +460,7 @@ def storeResults(model, folder, best_metric, best_metric_epoch, datadict, epoch,
 
 
 def test(folder_name, parent_dir, device):
+    '''Tests an existing model.'''
     parent_dir = Path(parent_dir)
 
     loaderdict = read_json(parent_dir/folder_name /
@@ -536,8 +519,6 @@ def test(folder_name, parent_dir, device):
             f"\nimg-wise DICE score means: {statdict['mean_imgdice_scores']}",
             f"\nimg-wise DICE score stds: {statdict['std_imgdice_scores']}",
             f"\nimg-wise DICE quantiles:{ statdict['imgdice_thresholds']}",
-            #f"\nf1-score mean: {statdict['mean_f1_scores']:.4f}, std: {statdict['std_f1_scores']:.4f}",
-            #f"\nrecall mean: {statdict['mean_recall']:.4f}, std: {statdict['std_recall']:.4f}",
         )
     del loss_function, score_function
     return avg_reconstruction_err

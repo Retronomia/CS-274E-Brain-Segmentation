@@ -11,11 +11,11 @@ def L1_Loss():
     return nn.L1Loss()  # (prediction,true)
 
 
-def L2_Loss(prediction, true):
+def L2_Loss():
     return nn.MSELoss()  # (prediction,true)
 
 
-def Bernoulli_Loss(prediction, true):
+def Bernoulli_Loss():
     return nn.BCELoss()  # (prediction,true)
 
 

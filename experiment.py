@@ -17,6 +17,7 @@ def loadobjective(trial):
     model_name = args_model_name
     batch_size = 4
 
+    # this dictionary is used for the optimizer
     # Generate values
     optimizerdict = dict()
     # trial.suggest_float("lr", 0.0008, 0.002, step=0.0001) #0.001
@@ -27,11 +28,13 @@ def loadobjective(trial):
     # trial.suggest_float("weight_decay", 0, 0.0003,step=0.0001) #0.0002
     optimizerdict['weight_decay'] = 0.0001
 
+    # this dictionary is used for the stepLR scheduler
     learnerdict = dict()
     # trial.suggest_float("gamma",.7,1,step=.05) #.75
     learnerdict['gamma'] = .95
     learnerdict['step_size'] = 5
 
+    # this dictionary gets fed into the model
     encoderdict = dict()
     encoderdict['num_layers'] = 5  # 4 #5
     encoderdict['kernel_size'] = [1, 2, 3, 4, 5]  # [1,2,3,4] #[1,2,3,4,5]
@@ -43,6 +46,7 @@ def loadobjective(trial):
 
     loss_name = args_loss_name
 
+    # this dictionary contains all the information the experiment will need
     loaderdict = dict()
     loaderdict['use_tqdm'] = args_use_tqdm
     loaderdict['trial_num'] = trial.number
